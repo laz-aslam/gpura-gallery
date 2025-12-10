@@ -9,7 +9,10 @@ interface CanvasItemCardProps {
 }
 
 function CanvasItemCardComponent({ item, onClick }: CanvasItemCardProps) {
-  const [imageState, setImageState] = useState<"loading" | "loaded" | "error">("loading");
+  // If no thumbnail URL, show error state immediately
+  const [imageState, setImageState] = useState<"loading" | "loaded" | "error">(
+    item.thumbnailUrl ? "loading" : "error"
+  );
 
   const handleLoad = useCallback(() => setImageState("loaded"), []);
   const handleError = useCallback(() => setImageState("error"), []);

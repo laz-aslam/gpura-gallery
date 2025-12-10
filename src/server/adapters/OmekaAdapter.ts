@@ -175,58 +175,52 @@ export class OmekaAdapter implements DataAdapter {
    * Get thumbnail URL from Omeka item
    */
   private getThumbnailUrl(item: OmekaItem): string | null {
-    // Check for thumbnail_display_urls (gpura.org format)
+    // Check for thumbnail_display_urls (gpura.org format) - most common in list responses
     if (item.thumbnail_display_urls) {
-      // Prefer large for better quality
-      if (item.thumbnail_display_urls.large) {
-        return item.thumbnail_display_urls.large;
-      }
-      if (item.thumbnail_display_urls.medium) {
-        return item.thumbnail_display_urls.medium;
-      }
-      if (item.thumbnail_display_urls.square) {
-        return item.thumbnail_display_urls.square;
-      }
+      // Prefer large for better quality, fallback to others
+      return (
+        item.thumbnail_display_urls.large ||
+        item.thumbnail_display_urls.medium ||
+        item.thumbnail_display_urls.square ||
+        null
+      );
     }
 
     // Check for o:thumbnail_display_urls (alternative format)
     if (item["o:thumbnail_display_urls"]) {
-      if (item["o:thumbnail_display_urls"]["large"]) {
-        return item["o:thumbnail_display_urls"]["large"];
-      }
-      if (item["o:thumbnail_display_urls"]["medium"]) {
-        return item["o:thumbnail_display_urls"]["medium"];
-      }
+      const urls = item["o:thumbnail_display_urls"];
+      return urls["large"] || urls["medium"] || urls["square"] || null;
     }
 
-    // Check for thumbnail in media
-    if (item["o:media"] && item["o:media"].length > 0) {
-      const media = item["o:media"][0];
-      if (typeof media === "object" && media !== null) {
-        if (
-          media["o:thumbnail_urls"] &&
-          media["o:thumbnail_urls"]["large"]
-        ) {
-          return media["o:thumbnail_urls"]["large"];
-        }
-        if (media["o:thumbnail_url"]) {
-          return media["o:thumbnail_url"];
-        }
-        if (
-          media["o:thumbnail_urls"] &&
-          media["o:thumbnail_urls"]["medium"]
-        ) {
-          return media["o:thumbnail_urls"]["medium"];
-        }
-      }
-    }
-
-    // Check for primary media
+    // Check for primary media first (often has the main thumbnail)
     if (item["o:primary_media"]) {
       const primary = item["o:primary_media"];
       if (typeof primary === "object" && primary !== null) {
+        if (primary["o:thumbnail_urls"]) {
+          const urls = primary["o:thumbnail_urls"];
+          if (urls["large"] || urls["medium"] || urls["square"]) {
+            return urls["large"] || urls["medium"] || urls["square"];
+          }
+        }
         if (primary["o:thumbnail_url"]) {
           return primary["o:thumbnail_url"];
+        }
+      }
+    }
+
+    // Check for thumbnail in media array
+    if (item["o:media"] && item["o:media"].length > 0) {
+      for (const media of item["o:media"]) {
+        if (typeof media === "object" && media !== null) {
+          if (media["o:thumbnail_urls"]) {
+            const urls = media["o:thumbnail_urls"];
+            if (urls["large"] || urls["medium"] || urls["square"]) {
+              return urls["large"] || urls["medium"] || urls["square"];
+            }
+          }
+          if (media["o:thumbnail_url"]) {
+            return media["o:thumbnail_url"];
+          }
         }
       }
     }
