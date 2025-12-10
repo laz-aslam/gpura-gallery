@@ -60,7 +60,7 @@ function parseIIIFManifest(manifest: IIIFManifestData): IIIFPage[] {
           
           pages.push({
             id: canvas["@id"] || String(pages.length),
-            label: canvas.label || `Page ${pages.length + 1}`,
+            label: extractLabel(canvas.label) || `Page ${pages.length + 1}`,
             imageUrl,
             width: canvas.width || 1000,
             height: canvas.height || 1400,
