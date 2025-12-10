@@ -172,13 +172,100 @@ export class OmekaAdapter implements DataAdapter {
   }
 
   /**
+   * Check if a thumbnail URL is a placeholder image (not real content)
+   */
+  private isPlaceholderThumbnail(url: string): boolean {
+    const lowerUrl = url.toLowerCase();
+    // Omeka default/placeholder patterns
+    return (
+      lowerUrl.includes("/application/") ||
+      lowerUrl.includes("/asset/") ||
+      lowerUrl.includes("default") ||
+      lowerUrl.includes("placeholder") ||
+      lowerUrl.includes("fallback") ||
+      lowerUrl.endsWith(".svg")
+    );
+  }
+
+  /**
+   * Fetch actual thumbnail from media details (first page of PDF/IIIF)
+   */
+  private async fetchMediaThumbnail(mediaRef: OmekaMediaRef): Promise<string | null> {
+    if (!mediaRef["@id"]) return null;
+
+    try {
+      const response = await fetch(mediaRef["@id"], {
+        headers: { Accept: "application/json" },
+      });
+
+      if (!response.ok) return null;
+
+      const mediaDetail = await response.json();
+
+      // Check for thumbnail URLs in media detail
+      if (mediaDetail["o:thumbnail_urls"]) {
+        const urls = mediaDetail["o:thumbnail_urls"];
+        const thumb = urls["large"] || urls["medium"] || urls["square"];
+        if (thumb && !this.isPlaceholderThumbnail(thumb)) {
+          return thumb;
+        }
+      }
+
+      // For IIIF items, try to construct thumbnail from manifest
+      if (mediaDetail["o:ingester"] === "iiif" && mediaDetail["o:source"]) {
+        const manifestUrl = mediaDetail["o:source"];
+        try {
+          const manifestResp = await fetch(manifestUrl, {
+            headers: { Accept: "application/json" },
+          });
+          if (manifestResp.ok) {
+            const manifest = await manifestResp.json();
+            // IIIF Presentation 3.0
+            if (manifest.items && manifest.items[0]) {
+              const canvas = manifest.items[0];
+              if (canvas.thumbnail && canvas.thumbnail[0]?.id) {
+                return canvas.thumbnail[0].id;
+              }
+              // Try to get from annotation
+              if (canvas.items?.[0]?.items?.[0]?.body?.id) {
+                const imageId = canvas.items[0].items[0].body.id;
+                // Convert to thumbnail size
+                return imageId.replace(/\/full\/.*$/, "/full/400,/0/default.jpg");
+              }
+            }
+            // IIIF Presentation 2.0
+            if (manifest.sequences?.[0]?.canvases?.[0]) {
+              const canvas = manifest.sequences[0].canvases[0];
+              if (canvas.thumbnail?.["@id"]) {
+                return canvas.thumbnail["@id"];
+              }
+              if (canvas.images?.[0]?.resource?.["@id"]) {
+                const imageId = canvas.images[0].resource["@id"];
+                return imageId.replace(/\/full\/.*$/, "/full/400,/0/default.jpg");
+              }
+            }
+          }
+        } catch {
+          // Ignore IIIF fetch errors
+        }
+      }
+
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * Get thumbnail URL from Omeka item
    */
   private getThumbnailUrl(item: OmekaItem): string | null {
+    let url: string | null = null;
+
     // Check for thumbnail_display_urls (gpura.org format) - most common in list responses
     if (item.thumbnail_display_urls) {
       // Prefer large for better quality, fallback to others
-      return (
+      url = (
         item.thumbnail_display_urls.large ||
         item.thumbnail_display_urls.medium ||
         item.thumbnail_display_urls.square ||
@@ -187,45 +274,48 @@ export class OmekaAdapter implements DataAdapter {
     }
 
     // Check for o:thumbnail_display_urls (alternative format)
-    if (item["o:thumbnail_display_urls"]) {
+    if (!url && item["o:thumbnail_display_urls"]) {
       const urls = item["o:thumbnail_display_urls"];
-      return urls["large"] || urls["medium"] || urls["square"] || null;
+      url = urls["large"] || urls["medium"] || urls["square"] || null;
     }
 
     // Check for primary media first (often has the main thumbnail)
-    if (item["o:primary_media"]) {
+    if (!url && item["o:primary_media"]) {
       const primary = item["o:primary_media"];
       if (typeof primary === "object" && primary !== null) {
         if (primary["o:thumbnail_urls"]) {
           const urls = primary["o:thumbnail_urls"];
-          if (urls["large"] || urls["medium"] || urls["square"]) {
-            return urls["large"] || urls["medium"] || urls["square"];
-          }
+          url = urls["large"] || urls["medium"] || urls["square"] || null;
         }
-        if (primary["o:thumbnail_url"]) {
-          return primary["o:thumbnail_url"];
+        if (!url && primary["o:thumbnail_url"]) {
+          url = primary["o:thumbnail_url"];
         }
       }
     }
 
     // Check for thumbnail in media array
-    if (item["o:media"] && item["o:media"].length > 0) {
+    if (!url && item["o:media"] && item["o:media"].length > 0) {
       for (const media of item["o:media"]) {
         if (typeof media === "object" && media !== null) {
           if (media["o:thumbnail_urls"]) {
             const urls = media["o:thumbnail_urls"];
-            if (urls["large"] || urls["medium"] || urls["square"]) {
-              return urls["large"] || urls["medium"] || urls["square"];
-            }
+            url = urls["large"] || urls["medium"] || urls["square"] || null;
+            if (url) break;
           }
-          if (media["o:thumbnail_url"]) {
-            return media["o:thumbnail_url"];
+          if (!url && media["o:thumbnail_url"]) {
+            url = media["o:thumbnail_url"];
+            break;
           }
         }
       }
     }
 
-    return null;
+    // Filter out placeholder images
+    if (url && this.isPlaceholderThumbnail(url)) {
+      return null;
+    }
+
+    return url;
   }
 
   /**
@@ -704,15 +794,16 @@ export class OmekaAdapter implements DataAdapter {
     }
 
     params.set("page", String(page));
-    // Keep original fetch count for speed
-    const perPage = hasFilters ? Math.min(req.limit * 2, 50) : req.limit;
-    params.set("per_page", String(perPage));
+    // Always fetch max items to compensate for thumbnail filtering (some items lack thumbnails)
+    params.set("per_page", "50");
     params.set("sort_by", "created");
     params.set("sort_order", sortOrder);
 
     let transformedItems: ArchiveItem[] = [];
+    let rawItems: OmekaItem[] = [];
     try {
       const { items } = await this.fetchItems(params);
+      rawItems = items;
       transformedItems = items.map((item) => this.transformItem(item));
     } catch (error) {
       console.error("Error fetching tile items:", error);
@@ -776,8 +867,57 @@ export class OmekaAdapter implements DataAdapter {
       }
     }
 
-    // Filter out items without thumbnails - don't show placeholder tiles
-    transformedItems = transformedItems.filter((item) => item.thumbnailUrl);
+    // For items with placeholder thumbnails, try to fetch real thumbnails from media
+    const itemsNeedingThumbnails: { index: number; rawItem: OmekaItem }[] = [];
+    
+    for (let i = 0; i < transformedItems.length; i++) {
+      const item = transformedItems[i];
+      const rawItem = rawItems.find(r => String(r["o:id"]) === item.id);
+      
+      if (!item.thumbnailUrl || item.thumbnailUrl.trim().length === 0) {
+        // No thumbnail at all - try to fetch from media
+        if (rawItem?.["o:media"]?.length) {
+          itemsNeedingThumbnails.push({ index: i, rawItem });
+        }
+      } else if (this.isPlaceholderThumbnail(item.thumbnailUrl)) {
+        // Has placeholder - try to get real thumbnail
+        if (rawItem?.["o:media"]?.length) {
+          itemsNeedingThumbnails.push({ index: i, rawItem });
+        } else {
+          // Can't get real thumbnail, clear it
+          transformedItems[i] = { ...item, thumbnailUrl: null };
+        }
+      }
+    }
+    
+    // Fetch real thumbnails for items that need them (limit to avoid slowdown)
+    const MAX_THUMBNAIL_FETCHES = 15;
+    const fetchPromises = itemsNeedingThumbnails.slice(0, MAX_THUMBNAIL_FETCHES).map(async ({ index, rawItem }) => {
+      const mediaRefs = rawItem["o:media"] as OmekaMediaRef[];
+      for (const mediaRef of mediaRefs) {
+        const realThumb = await this.fetchMediaThumbnail(mediaRef);
+        if (realThumb) {
+          transformedItems[index] = { ...transformedItems[index], thumbnailUrl: realThumb };
+          return;
+        }
+      }
+      // No real thumbnail found, clear it
+      transformedItems[index] = { ...transformedItems[index], thumbnailUrl: null };
+    });
+    
+    await Promise.all(fetchPromises);
+    
+    // Clear thumbnails for items we couldn't process
+    for (const { index } of itemsNeedingThumbnails.slice(MAX_THUMBNAIL_FETCHES)) {
+      if (transformedItems[index].thumbnailUrl && this.isPlaceholderThumbnail(transformedItems[index].thumbnailUrl!)) {
+        transformedItems[index] = { ...transformedItems[index], thumbnailUrl: null };
+      }
+    }
+
+    // Filter out items without valid thumbnails
+    transformedItems = transformedItems.filter(
+      (item) => item.thumbnailUrl && item.thumbnailUrl.trim().length > 0
+    );
 
     // Shuffle items using tile-specific seed for unique ordering per tile
     const tileSeed = absX * 1000 + absY + seed;

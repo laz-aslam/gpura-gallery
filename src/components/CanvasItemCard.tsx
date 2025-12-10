@@ -9,13 +9,18 @@ interface CanvasItemCardProps {
 }
 
 function CanvasItemCardComponent({ item, onClick }: CanvasItemCardProps) {
-  // If no thumbnail URL, show error state immediately
+  // If no thumbnail URL, don't render at all
   const [imageState, setImageState] = useState<"loading" | "loaded" | "error">(
     item.thumbnailUrl ? "loading" : "error"
   );
 
   const handleLoad = useCallback(() => setImageState("loaded"), []);
   const handleError = useCallback(() => setImageState("error"), []);
+
+  // Don't render cards without valid thumbnails or failed images
+  if (!item.thumbnailUrl || imageState === "error") {
+    return null;
+  }
 
   return (
     <div
@@ -50,37 +55,19 @@ function CanvasItemCardComponent({ item, onClick }: CanvasItemCardProps) {
         />
       )}
 
-      {/* Error state */}
-      {imageState === "error" && (
-        <div
-          className="absolute inset-0 flex items-center justify-center"
-          style={{ background: "#1a1a1a" }}
-        >
-          <svg
-            className="w-8 h-8 opacity-20"
-            fill="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z" />
-          </svg>
-        </div>
-      )}
-
       {/* Image */}
-      {item.thumbnailUrl && imageState !== "error" && (
-        <img
-          src={item.thumbnailUrl}
-          alt=""
-          className={`w-full h-full object-cover transition-opacity duration-200 ${
-            imageState === "loaded" ? "opacity-100" : "opacity-0"
-          }`}
-          onLoad={handleLoad}
-          onError={handleError}
-          loading="lazy"
-          decoding="async"
-          draggable={false}
-        />
-      )}
+      <img
+        src={item.thumbnailUrl}
+        alt=""
+        className={`w-full h-full object-cover transition-opacity duration-200 ${
+          imageState === "loaded" ? "opacity-100" : "opacity-0"
+        }`}
+        onLoad={handleLoad}
+        onError={handleError}
+        loading="lazy"
+        decoding="async"
+        draggable={false}
+      />
 
       {/* Hover overlay with title */}
       <div className="card-overlay">

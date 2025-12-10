@@ -196,12 +196,12 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   },
 
   setQuery: (query) => {
-    set({ query });
+    set({ query, cameraX: 0, cameraY: 0 }); // Reset view to center
     get().clearTiles();
   },
 
   setFilters: (filters) => {
-    set({ filters });
+    set({ filters, cameraX: 0, cameraY: 0 }); // Reset view to center
     get().clearTiles();
   },
 
