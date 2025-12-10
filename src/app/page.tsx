@@ -4,6 +4,7 @@ import { InfiniteCanvas } from "@/components/InfiniteCanvas";
 import { FilterBar } from "@/components/FilterBar";
 import { ItemDrawer } from "@/components/ItemDrawer";
 import { DocumentViewer } from "@/components/DocumentViewer";
+import { InfoButton } from "@/components/InfoButton";
 import { siteConfig } from "@/config/site";
 
 export default function Home() {
@@ -19,15 +20,13 @@ export default function Home() {
           href={siteConfig.links.classicSite}
           target="_blank"
           rel="noopener noreferrer"
-          className="flex items-center gap-2 pointer-events-auto hover:opacity-80 transition-opacity"
+          className="pointer-events-auto hover:opacity-80 transition-opacity"
         >
-          <div
-            className="w-8 h-8 rounded-lg flex items-center justify-center font-bold text-sm"
-            style={{ background: "white", color: "black" }}
-          >
-            ഗ്
-          </div>
-          <span className="text-sm font-medium hidden sm:block">gpura</span>
+          <img
+            src="/logo.svg"
+            alt="Granthapura Infinite Gallery"
+            className="h-7"
+          />
         </a>
 
         {/* Center filters */}
@@ -36,12 +35,19 @@ export default function Home() {
         </div>
 
         {/* Right side links */}
-        <div className="flex items-center gap-3 pointer-events-auto">
+        <div
+          className="flex items-center gap-2 px-2 py-1.5 rounded-full pointer-events-auto"
+          style={{
+            background: "rgba(255,255,255,0.05)",
+            border: "1px solid rgba(255,255,255,0.08)",
+            backdropFilter: "blur(20px)",
+          }}
+        >
           <a
             href={siteConfig.links.github}
             target="_blank"
             rel="noopener noreferrer"
-            className="w-8 h-8 flex items-center justify-center rounded-full transition-colors hover:bg-white/10"
+            className="w-7 h-7 flex items-center justify-center rounded-full transition-colors hover:bg-white/10"
             aria-label="GitHub"
           >
             <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
@@ -56,8 +62,7 @@ export default function Home() {
             href={siteConfig.links.classicSite}
             target="_blank"
             rel="noopener noreferrer"
-            className="px-3 py-1.5 rounded-full text-xs font-medium transition-colors hover:bg-white/10"
-            style={{ border: "1px solid rgba(255,255,255,0.15)" }}
+            className="px-2.5 py-1 rounded-full text-xs font-medium transition-colors hover:bg-white/10"
           >
             gpura.org →
           </a>
@@ -71,12 +76,8 @@ export default function Home() {
         </p>
       </div>
 
-      {/* Right side label */}
-      <div className="fixed bottom-4 right-4 z-20 pointer-events-none">
-        <p className="text-[11px]" style={{ color: "rgba(255,255,255,0.3)" }}>
-          Kerala Digital Archive
-        </p>
-      </div>
+      {/* Info button */}
+      <InfoButton />
 
       {/* Item drawer */}
       <ItemDrawer />
