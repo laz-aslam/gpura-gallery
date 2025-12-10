@@ -663,6 +663,21 @@ export class OmekaAdapter implements DataAdapter {
   }
 
   /**
+   * Shuffle array using seeded random for consistent results per tile
+   */
+  private shuffleWithSeed<T>(array: T[], seed: number): T[] {
+    const result = [...array];
+    let s = seed;
+    for (let i = result.length - 1; i > 0; i--) {
+      // Simple seeded random
+      s = (s * 1103515245 + 12345) & 0x7fffffff;
+      const j = s % (i + 1);
+      [result[i], result[j]] = [result[j], result[i]];
+    }
+    return result;
+  }
+
+  /**
    * Fetch items for a specific tile
    */
   async fetchTile(req: TileRequest): Promise<ArchiveItem[]> {
@@ -674,10 +689,19 @@ export class OmekaAdapter implements DataAdapter {
       req.filters.yearMax !== undefined
     );
 
-    // Calculate page based on tile coordinates + seed for variety on each refresh
+    // Use prime strides to spread adjacent tiles apart
     const seed = req.seed || 0;
-    const tileIndex = Math.abs(req.tileX * 1000 + req.tileY);
-    const page = ((tileIndex + seed) % 100) + 1;
+    const PRIME_X = 7;
+    const PRIME_Y = 11;
+    const MAX_PAGES = 100; // Stay within available pages
+    
+    // Ensure positive values for tile coords
+    const absX = Math.abs(req.tileX) + (req.tileX < 0 ? 100 : 0);
+    const absY = Math.abs(req.tileY) + (req.tileY < 0 ? 100 : 0);
+    const page = ((absX * PRIME_X + absY * PRIME_Y + seed) % MAX_PAGES) + 1;
+    
+    // Vary sort order (asc/desc) for variety
+    const sortOrder = ((absX + absY + seed) % 2 === 0) ? "desc" : "asc";
 
     const params = new URLSearchParams();
 
@@ -686,11 +710,11 @@ export class OmekaAdapter implements DataAdapter {
     }
 
     params.set("page", String(page));
-    // Fetch more items if we have filters, but cap at 50 to avoid API errors
+    // Keep original fetch count for speed
     const perPage = hasFilters ? Math.min(req.limit * 2, 50) : req.limit;
     params.set("per_page", String(perPage));
     params.set("sort_by", "created");
-    params.set("sort_order", "desc");
+    params.set("sort_order", sortOrder);
 
     let transformedItems: ArchiveItem[] = [];
     try {
@@ -758,8 +782,12 @@ export class OmekaAdapter implements DataAdapter {
       }
     }
 
+    // Shuffle items using tile-specific seed for unique ordering per tile
+    const tileSeed = absX * 1000 + absY + seed;
+    const shuffled = this.shuffleWithSeed(transformedItems, tileSeed);
+
     // Return only the requested limit
-    return transformedItems.slice(0, req.limit);
+    return shuffled.slice(0, req.limit);
   }
 
   /**
