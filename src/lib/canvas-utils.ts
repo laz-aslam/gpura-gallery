@@ -187,5 +187,73 @@ export function hashFilters(filters?: {
   return JSON.stringify(filters);
 }
 
+/**
+ * Check if filters are active (any non-empty filter)
+ */
+export function hasActiveFilters(filters?: {
+  languages?: string[];
+  types?: string[];
+  collections?: string[];
+  periods?: string[];
+  yearMin?: number;
+  yearMax?: number;
+}): boolean {
+  if (!filters || Object.keys(filters).length === 0) return false;
+  
+  // Check each filter type explicitly
+  if (Array.isArray(filters.languages) && filters.languages.length > 0) return true;
+  if (Array.isArray(filters.types) && filters.types.length > 0) return true;
+  if (Array.isArray(filters.collections) && filters.collections.length > 0) return true;
+  if (Array.isArray(filters.periods) && filters.periods.length > 0) return true;
+  if (typeof filters.yearMin === 'number') return true;
+  if (typeof filters.yearMax === 'number') return true;
+  
+  return false;
+}
+
+/**
+ * Repack canvas items into a dense grid layout.
+ * Used when filters are active to eliminate gaps from empty tiles.
+ */
+export function repackItemsToGrid(items: CanvasItem[]): CanvasItem[] {
+  // Deduplicate items by ID (same item might appear in multiple tiles due to API pagination)
+  const uniqueItems = new Map<string, CanvasItem>();
+  for (const item of items) {
+    if (!uniqueItems.has(item.id)) {
+      uniqueItems.set(item.id, item);
+    }
+  }
+
+  // Sort by ID for consistent ordering
+  const sortedItems = Array.from(uniqueItems.values()).sort((a, b) =>
+    a.id.localeCompare(b.id, undefined, { numeric: true })
+  );
+
+  // Reposition items in a dense grid starting from origin
+  return sortedItems.map((item, index) => {
+    const col = index % COLS_PER_TILE;
+    const row = Math.floor(index / COLS_PER_TILE);
+
+    const x = col * (CARD_WIDTH + CARD_GAP) + CARD_GAP / 2;
+    const y = row * (CARD_HEIGHT + CARD_GAP) + CARD_GAP / 2;
+
+    // Keep the same seeded rotation for visual consistency
+    const seed = parseInt(item.id, 10) || index;
+    const rotation = (seededRandom(seed) - 0.5) * 6;
+
+    return {
+      ...item,
+      x,
+      y,
+      width: CARD_WIDTH,
+      height: CARD_HEIGHT,
+      rotation,
+      // Mark as repacked so tileX/tileY don't conflict
+      tileX: 0,
+      tileY: Math.floor(index / (COLS_PER_TILE * ROWS_PER_TILE)),
+    };
+  });
+}
+
 // Export tile dimensions for use elsewhere
 export const TILE_DIMENSIONS = { width: TILE_WIDTH, height: TILE_HEIGHT };

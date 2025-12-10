@@ -3,7 +3,7 @@
 import { useEffect, useRef, useCallback, useMemo } from "react";
 import { useCanvasStore } from "@/store/canvas-store";
 import { CanvasItemCard } from "./CanvasItemCard";
-import { getVisibleTiles, cullItems, TILE_DIMENSIONS } from "@/lib/canvas-utils";
+import { getVisibleTiles, cullItems, TILE_DIMENSIONS, repackItemsToGrid, hasActiveFilters } from "@/lib/canvas-utils";
 
 export function InfiniteCanvas() {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -20,6 +20,7 @@ export function InfiniteCanvas() {
     viewportHeight,
     isDragging,
     filters,
+    tiles,
     setCamera,
     pan,
     setViewport,
@@ -102,17 +103,36 @@ export function InfiniteCanvas() {
     };
   }, [cameraX, cameraY, isDragging, loadVisibleTiles, filters]);
 
-  // Cull items to visible
+  // Collect and process items - repack when filters are active
   const visibleItems = useMemo(() => {
+    // Collect all items from loaded tiles
     const allItems = getAllVisibleItems();
+    
+    // When filters are active, repack items into a dense grid
+    const shouldRepack = hasActiveFilters(filters);
+    const processedItems = shouldRepack ? repackItemsToGrid(allItems) : allItems;
+    
+    // Debug logging
+    if (shouldRepack && allItems.length > 0) {
+      console.log('[DEBUG] Repacking active:', {
+        filtersActive: shouldRepack,
+        filters,
+        totalItems: allItems.length,
+        camera: { x: cameraX, y: cameraY },
+        sampleOriginalPos: allItems[0] ? { x: allItems[0].x, y: allItems[0].y } : null,
+        sampleRepackedPos: processedItems[0] ? { x: processedItems[0].x, y: processedItems[0].y } : null,
+      });
+    }
+    
+    // Cull to only visible items
     return cullItems(
-      allItems,
+      processedItems,
       cameraX,
       cameraY,
       viewportWidth,
       viewportHeight
     );
-  }, [getAllVisibleItems, cameraX, cameraY, viewportWidth, viewportHeight]);
+  }, [getAllVisibleItems, cameraX, cameraY, viewportWidth, viewportHeight, tiles, filters]);
 
   // Momentum animation
   const animateMomentum = useCallback(() => {

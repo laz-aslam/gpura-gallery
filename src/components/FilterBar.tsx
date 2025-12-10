@@ -16,7 +16,7 @@ export function FilterBar() {
   const [isLoading, setIsLoading] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   
-  const { filters, setFilters, clearTiles, tiles } = useCanvasStore();
+  const { filters, setFilters, clearTiles, tiles, resetView } = useCanvasStore();
 
   // Check if any tiles are loading
   useEffect(() => {
@@ -42,8 +42,10 @@ export function FilterBar() {
   }, []);
 
   const updateFilter = (newFilters: SearchFilters) => {
+    // Reset camera FIRST so tile loading uses correct position
+    resetView();
+    // setFilters already calls clearTiles internally
     setFilters(newFilters);
-    clearTiles();
   };
 
   const toggleLanguage = (lang: string) => {
