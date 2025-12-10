@@ -18,7 +18,8 @@ async function revalidateTileInBackground(
   tileY: number,
   q: string | undefined,
   filters: SearchFilters | undefined,
-  limit: number
+  limit: number,
+  seed: number
 ) {
   // Skip if already revalidating this key
   if (pendingRevalidations.has(cacheKey)) return;
@@ -26,7 +27,7 @@ async function revalidateTileInBackground(
 
   try {
     const adapter = await getDataAdapter();
-    const items = await adapter.fetchTile({ tileX, tileY, q, filters, limit });
+    const items = await adapter.fetchTile({ tileX, tileY, q, filters, limit, seed });
     const response: TileResponse = { tileX, tileY, items };
     tileCache.set(cacheKey, { data: response, timestamp: Date.now() });
   } catch (error) {
@@ -65,6 +66,7 @@ export async function GET(request: NextRequest) {
       searchParams.get("limit") || String(canvasConfig.ITEMS_PER_TILE),
       10
     );
+    const seed = parseInt(searchParams.get("seed") || "0", 10);
 
     let filters: SearchFilters | undefined;
     const filtersParam = searchParams.get("filters");
@@ -76,8 +78,8 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Create cache key
-    const cacheKey = `${tileX},${tileY}:${q || ""}:${filtersParam || ""}`;
+    // Create cache key - include seed for per-session variety
+    const cacheKey = `${tileX},${tileY}:${q || ""}:${filtersParam || ""}:${seed}`;
 
     // Check cache - serve stale while revalidating
     const cached = tileCache.get(cacheKey);
@@ -99,7 +101,7 @@ export async function GET(request: NextRequest) {
       // Stale but within grace period - serve stale and revalidate in background
       if (age < STALE_TTL) {
         // Fire-and-forget background revalidation
-        revalidateTileInBackground(cacheKey, tileX, tileY, q, filters, limit);
+        revalidateTileInBackground(cacheKey, tileX, tileY, q, filters, limit, seed);
         
         return NextResponse.json(cached.data, {
           headers: {
@@ -118,6 +120,7 @@ export async function GET(request: NextRequest) {
       q,
       filters,
       limit,
+      seed,
     });
 
     const response: TileResponse = {

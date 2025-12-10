@@ -22,6 +22,9 @@ const inFlightRequests = new Map<string, Promise<void>>();
 let activeRequestCount = 0; // Track actual in-flight requests separately
 const requestQueue: Array<{ key: string; doFetch: () => void }> = [];
 
+// Generate a random session seed on page load for tile variety
+const sessionSeed = Math.floor(Math.random() * 10000);
+
 // Process the queue when a request completes
 function processQueue() {
   while (requestQueue.length > 0 && activeRequestCount < MAX_CONCURRENT_REQUESTS) {
@@ -118,6 +121,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
             tx: tileX.toString(),
             ty: tileY.toString(),
             limit: canvasConfig.ITEMS_PER_TILE.toString(),
+            seed: sessionSeed.toString(),
           });
 
           if (state.query) {

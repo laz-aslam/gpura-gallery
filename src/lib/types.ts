@@ -147,6 +147,7 @@ export type TileRequest = {
   q?: string;
   filters?: SearchFilters;
   limit: number;
+  seed?: number; // Random seed for variety on each page refresh
 };
 
 /**

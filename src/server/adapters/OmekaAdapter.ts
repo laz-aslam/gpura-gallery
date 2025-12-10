@@ -674,9 +674,10 @@ export class OmekaAdapter implements DataAdapter {
       req.filters.yearMax !== undefined
     );
 
-    // Calculate page based on tile coordinates
+    // Calculate page based on tile coordinates + seed for variety on each refresh
+    const seed = req.seed || 0;
     const tileIndex = Math.abs(req.tileX * 1000 + req.tileY);
-    const page = (tileIndex % 100) + 1;
+    const page = ((tileIndex + seed) % 100) + 1;
 
     const params = new URLSearchParams();
 
