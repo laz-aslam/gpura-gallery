@@ -776,6 +776,9 @@ export class OmekaAdapter implements DataAdapter {
       }
     }
 
+    // Filter out items without thumbnails - don't show placeholder tiles
+    transformedItems = transformedItems.filter((item) => item.thumbnailUrl);
+
     // Shuffle items using tile-specific seed for unique ordering per tile
     const tileSeed = absX * 1000 + absY + seed;
     const shuffled = this.shuffleWithSeed(transformedItems, tileSeed);
