@@ -35,6 +35,47 @@ export type CanvasItem = ArchiveItem & {
 };
 
 /**
+ * Media file from the archive (PDF, image, etc.)
+ */
+export type MediaFile = {
+  id: string;
+  type: "pdf" | "image" | "audio" | "video" | "iiif" | "other";
+  url: string; // Original file URL or IIIF manifest URL
+  thumbnailUrl?: string | null;
+  title?: string | null;
+  mimeType?: string | null;
+};
+
+/**
+ * IIIF manifest page
+ */
+export type IIIFPage = {
+  id: string;
+  label?: string;
+  imageUrl: string;
+  width: number;
+  height: number;
+};
+
+/**
+ * Parsed IIIF manifest data
+ */
+export type IIIFManifest = {
+  id: string;
+  label: string;
+  pages: IIIFPage[];
+  totalPages: number;
+};
+
+/**
+ * Document source info for viewer
+ */
+export type DocumentSource = {
+  type: "iiif" | "pdf";
+  url: string;
+};
+
+/**
  * Full item details for the drawer view
  */
 export type ItemDetail = ArchiveItem & {
@@ -43,6 +84,8 @@ export type ItemDetail = ArchiveItem & {
   publisher?: string | null;
   rights?: string | null;
   fullImageUrl?: string | null; // Full resolution image for detail view
+  media?: MediaFile[]; // All media files (PDFs, images, etc.)
+  documentSource?: DocumentSource | null; // IIIF manifest or PDF URL for viewing
   raw?: unknown; // Optional raw Omeka payload for debugging
 };
 

@@ -3,6 +3,7 @@
 import { InfiniteCanvas } from "@/components/InfiniteCanvas";
 import { FilterBar } from "@/components/FilterBar";
 import { ItemDrawer } from "@/components/ItemDrawer";
+import { DocumentViewer } from "@/components/DocumentViewer";
 import { siteConfig } from "@/config/site";
 
 export default function Home() {
@@ -79,6 +80,9 @@ export default function Home() {
 
       {/* Item drawer */}
       <ItemDrawer />
+
+      {/* Full-screen document viewer */}
+      <DocumentViewer />
     </main>
   );
 }

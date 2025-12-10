@@ -2,14 +2,26 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useCanvasStore } from "@/store/canvas-store";
+import { useViewerStore } from "@/store/viewer-store";
 import type { ItemDetail } from "@/lib/types";
 
 export function ItemDrawer() {
   const { selectedItemId, setSelectedItem } = useCanvasStore();
+  const openViewer = useViewerStore((s) => s.openViewer);
   const [item, setItem] = useState<ItemDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [imageLoaded, setImageLoaded] = useState(false);
+
+  // Check if item has viewable content (IIIF manifest or PDF)
+  const hasViewableContent = !!item?.documentSource;
+
+  // Open document viewer
+  const handleReadDocument = useCallback(() => {
+    if (item?.documentSource) {
+      openViewer(item.documentSource, item.title);
+    }
+  }, [item, openViewer]);
 
   // Fetch item details when selected
   useEffect(() => {
@@ -130,7 +142,7 @@ export function ItemDrawer() {
               {/* Large image - use full resolution when available */}
               {(item.fullImageUrl || item.thumbnailUrl) && (
                 <div
-                  className="relative w-full aspect-[3/4]"
+                  className="relative w-full aspect-3/4"
                   style={{ background: "#141414" }}
                 >
                   {!imageLoaded && (
@@ -202,18 +214,51 @@ export function ItemDrawer() {
           )}
         </div>
 
-        {/* Footer with CTA */}
+        {/* Footer with CTAs */}
         {item && !loading && (
-          <div className="p-6 pt-0">
+          <div className="p-6 pt-0 space-y-3">
+            {/* Primary CTA: Read Document (if IIIF manifest exists) */}
+            {hasViewableContent && (
+              <button
+                onClick={handleReadDocument}
+                className="flex items-center justify-center gap-2 w-full py-3 rounded-full font-medium text-sm transition-all hover:scale-[1.02] active:scale-[0.98]"
+                style={{
+                  background: "white",
+                  color: "black",
+                }}
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
+                  />
+                </svg>
+                <span>Read Document</span>
+              </button>
+            )}
+
+            {/* Secondary CTA: View on gpura.org */}
             <a
               href={item.sourceUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center justify-center gap-2 w-full py-3 rounded-full font-medium text-sm transition-all hover:scale-[1.02]"
-              style={{
-                background: "white",
-                color: "black",
-              }}
+              className={`flex items-center justify-center gap-2 w-full py-3 rounded-full font-medium text-sm transition-all hover:scale-[1.02] ${
+                hasViewableContent ? "" : ""
+              }`}
+              style={
+                hasViewableContent
+                  ? {
+                      background: "transparent",
+                      color: "#999",
+                      border: "1px solid rgba(255,255,255,0.15)",
+                    }
+                  : {
+                      background: "white",
+                      color: "black",
+                    }
+              }
             >
               <span>View on gpura.org</span>
               <svg

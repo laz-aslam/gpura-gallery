@@ -16,8 +16,22 @@ interface TileData {
   timestamp: number;
 }
 
-const CACHE_TTL = 5 * 60 * 1000;
+const CACHE_TTL = 30 * 60 * 1000; // 30 minutes - match server cache
+const MAX_CONCURRENT_REQUESTS = 6; // Limit concurrent fetches
 const inFlightRequests = new Map<string, Promise<void>>();
+let activeRequestCount = 0; // Track actual in-flight requests separately
+const requestQueue: Array<{ key: string; doFetch: () => void }> = [];
+
+// Process the queue when a request completes
+function processQueue() {
+  while (requestQueue.length > 0 && activeRequestCount < MAX_CONCURRENT_REQUESTS) {
+    const next = requestQueue.shift();
+    if (next) {
+      activeRequestCount++;
+      next.doFetch();
+    }
+  }
+}
 
 interface CanvasState {
   cameraX: number;
@@ -89,56 +103,70 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       return inFlightRequests.get(key);
     }
 
-    const fetchPromise = (async () => {
-      set((s) => {
-        const newTiles = new Map(s.tiles);
-        newTiles.set(key, { items: [], loading: true, timestamp: Date.now() });
-        return { tiles: newTiles };
-      });
-
-      try {
-        const params = new URLSearchParams({
-          tx: tileX.toString(),
-          ty: tileY.toString(),
-          limit: canvasConfig.ITEMS_PER_TILE.toString(),
-        });
-
-        if (state.query) {
-          params.set("q", state.query);
-        }
-
-        if (Object.keys(state.filters).length > 0) {
-          params.set("filters", JSON.stringify(state.filters));
-        }
-
-        const response = await fetch(`/api/tiles?${params}`);
-        if (!response.ok) {
-          throw new Error(`Failed to load tile: ${response.statusText}`);
-        }
-
-        const data = await response.json();
-        const items = itemsToCanvasItems(data.items, tileX, tileY);
-
+    // Create a promise that will be resolved when the fetch completes
+    const fetchPromise = new Promise<void>((resolveOuter) => {
+      const doFetch = async () => {
         set((s) => {
           const newTiles = new Map(s.tiles);
-          newTiles.set(key, { items, loading: false, timestamp: Date.now() });
+          newTiles.set(key, { items: [], loading: true, timestamp: Date.now() });
           return { tiles: newTiles };
         });
-      } catch (error) {
-        set((s) => {
-          const newTiles = new Map(s.tiles);
-          newTiles.set(key, {
-            items: [],
-            loading: false,
-            error: error instanceof Error ? error.message : "Unknown error",
-            timestamp: Date.now(),
+
+        try {
+          const params = new URLSearchParams({
+            tx: tileX.toString(),
+            ty: tileY.toString(),
+            limit: canvasConfig.ITEMS_PER_TILE.toString(),
           });
-          return { tiles: newTiles };
-        });
-      } finally {
-        inFlightRequests.delete(key);
+
+          if (state.query) {
+            params.set("q", state.query);
+          }
+
+          if (Object.keys(state.filters).length > 0) {
+            params.set("filters", JSON.stringify(state.filters));
+          }
+
+          const response = await fetch(`/api/tiles?${params}`);
+          if (!response.ok) {
+            throw new Error(`Failed to load tile: ${response.statusText}`);
+          }
+
+          const data = await response.json();
+          const items = itemsToCanvasItems(data.items, tileX, tileY);
+
+          set((s) => {
+            const newTiles = new Map(s.tiles);
+            newTiles.set(key, { items, loading: false, timestamp: Date.now() });
+            return { tiles: newTiles };
+          });
+        } catch (error) {
+          set((s) => {
+            const newTiles = new Map(s.tiles);
+            newTiles.set(key, {
+              items: [],
+              loading: false,
+              error: error instanceof Error ? error.message : "Unknown error",
+              timestamp: Date.now(),
+            });
+            return { tiles: newTiles };
+          });
+        } finally {
+          activeRequestCount--;
+          inFlightRequests.delete(key);
+          processQueue();
+          resolveOuter();
+        }
+      };
+
+      // If under the limit, start immediately; otherwise queue
+      if (activeRequestCount < MAX_CONCURRENT_REQUESTS) {
+        activeRequestCount++;
+        doFetch();
+      } else {
+        requestQueue.push({ key, doFetch });
       }
-    })();
+    });
 
     inFlightRequests.set(key, fetchPromise);
     return fetchPromise;
@@ -157,6 +185,8 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 
   clearTiles: () => {
     inFlightRequests.clear();
+    requestQueue.length = 0; // Clear pending queue
+    activeRequestCount = 0;
     set({ tiles: new Map() });
   },
 

@@ -3,9 +3,38 @@ import { getDataAdapter } from "@/server/adapters/DataAdapter";
 import type { SearchFilters, TileResponse } from "@/lib/types";
 import { canvasConfig } from "@/config/site";
 
+// Track in-flight background revalidations to avoid duplicates
+const pendingRevalidations = new Set<string>();
+
 // In-memory cache for tiles
 const tileCache = new Map<string, { data: TileResponse; timestamp: number }>();
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const CACHE_TTL = 30 * 60 * 1000; // 30 minutes - external API is slow, cache longer
+const STALE_TTL = 60 * 60 * 1000; // 1 hour - serve stale while revalidating
+
+// Background revalidation - doesn't block the response
+async function revalidateTileInBackground(
+  cacheKey: string,
+  tileX: number,
+  tileY: number,
+  q: string | undefined,
+  filters: SearchFilters | undefined,
+  limit: number
+) {
+  // Skip if already revalidating this key
+  if (pendingRevalidations.has(cacheKey)) return;
+  pendingRevalidations.add(cacheKey);
+
+  try {
+    const adapter = await getDataAdapter();
+    const items = await adapter.fetchTile({ tileX, tileY, q, filters, limit });
+    const response: TileResponse = { tileX, tileY, items };
+    tileCache.set(cacheKey, { data: response, timestamp: Date.now() });
+  } catch (error) {
+    console.error("Background revalidation failed:", error);
+  } finally {
+    pendingRevalidations.delete(cacheKey);
+  }
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -50,15 +79,35 @@ export async function GET(request: NextRequest) {
     // Create cache key
     const cacheKey = `${tileX},${tileY}:${q || ""}:${filtersParam || ""}`;
 
-    // Check cache
+    // Check cache - serve stale while revalidating
     const cached = tileCache.get(cacheKey);
-    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
-      return NextResponse.json(cached.data, {
-        headers: {
-          "Cache-Control": "public, max-age=300, stale-while-revalidate=600",
-          "X-Cache": "HIT",
-        },
-      });
+    const now = Date.now();
+    
+    if (cached) {
+      const age = now - cached.timestamp;
+      
+      // Fresh cache - serve immediately
+      if (age < CACHE_TTL) {
+        return NextResponse.json(cached.data, {
+          headers: {
+            "Cache-Control": "public, max-age=1800, stale-while-revalidate=3600",
+            "X-Cache": "HIT",
+          },
+        });
+      }
+      
+      // Stale but within grace period - serve stale and revalidate in background
+      if (age < STALE_TTL) {
+        // Fire-and-forget background revalidation
+        revalidateTileInBackground(cacheKey, tileX, tileY, q, filters, limit);
+        
+        return NextResponse.json(cached.data, {
+          headers: {
+            "Cache-Control": "public, max-age=1800, stale-while-revalidate=3600",
+            "X-Cache": "STALE",
+          },
+        });
+      }
     }
 
     // Fetch from adapter
@@ -80,11 +129,11 @@ export async function GET(request: NextRequest) {
     // Store in cache
     tileCache.set(cacheKey, { data: response, timestamp: Date.now() });
 
-    // Clean old cache entries periodically
-    if (tileCache.size > 200) {
-      const now = Date.now();
+    // Clean old cache entries periodically (expanded limit for longer TTL)
+    if (tileCache.size > 500) {
+      const cleanupTime = Date.now();
       for (const [key, value] of tileCache.entries()) {
-        if (now - value.timestamp > CACHE_TTL) {
+        if (cleanupTime - value.timestamp > STALE_TTL) {
           tileCache.delete(key);
         }
       }
@@ -92,7 +141,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(response, {
       headers: {
-        "Cache-Control": "public, max-age=300, stale-while-revalidate=600",
+        "Cache-Control": "public, max-age=1800, stale-while-revalidate=3600",
         "X-Cache": "MISS",
       },
     });

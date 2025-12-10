@@ -1,6 +1,8 @@
 import type {
   ArchiveItem,
   ItemDetail,
+  MediaFile,
+  DocumentSource,
   SearchRequest,
   SearchResponse,
   TileRequest,
@@ -286,6 +288,73 @@ export class OmekaAdapter implements DataAdapter {
   }
 
   /**
+   * Determine media type from MIME type or URL
+   */
+  private getMediaType(mimeType?: string, url?: string): MediaFile["type"] {
+    if (mimeType) {
+      if (mimeType === "application/pdf") return "pdf";
+      if (mimeType.startsWith("image/")) return "image";
+      if (mimeType.startsWith("audio/")) return "audio";
+      if (mimeType.startsWith("video/")) return "video";
+    }
+    
+    // Fallback to URL extension check
+    if (url) {
+      const lower = url.toLowerCase();
+      if (lower.endsWith(".pdf")) return "pdf";
+      if (lower.match(/\.(jpg|jpeg|png|gif|webp|tiff?)$/)) return "image";
+      if (lower.match(/\.(mp3|wav|ogg|flac)$/)) return "audio";
+      if (lower.match(/\.(mp4|webm|mov|avi)$/)) return "video";
+    }
+    
+    return "other";
+  }
+
+  /**
+   * Parse all media files from Omeka item
+   */
+  private parseMedia(item: OmekaItem): MediaFile[] {
+    const mediaList: MediaFile[] = [];
+    
+    if (!item["o:media"] || !Array.isArray(item["o:media"])) {
+      return mediaList;
+    }
+
+    for (const media of item["o:media"]) {
+      if (typeof media !== "object" || media === null) continue;
+      
+      const originalUrl = media["o:original_url"] as string | undefined;
+      if (!originalUrl) continue;
+      
+      const mimeType = media["o:media_type"] as string | undefined;
+      const mediaType = this.getMediaType(mimeType, originalUrl);
+      
+      // Get thumbnail URL
+      let thumbnailUrl: string | null = null;
+      if (media["o:thumbnail_urls"]) {
+        thumbnailUrl = 
+          media["o:thumbnail_urls"]["large"] ||
+          media["o:thumbnail_urls"]["medium"] ||
+          media["o:thumbnail_urls"]["square"] ||
+          null;
+      } else if (media["o:thumbnail_url"]) {
+        thumbnailUrl = media["o:thumbnail_url"];
+      }
+      
+      mediaList.push({
+        id: String(media["o:id"] || mediaList.length),
+        type: mediaType,
+        url: originalUrl,
+        thumbnailUrl,
+        title: (media["o:title"] as string) || null,
+        mimeType: mimeType || null,
+      });
+    }
+
+    return mediaList;
+  }
+
+  /**
    * Transform Omeka item to ArchiveItem
    */
   private transformItem(item: OmekaItem): ArchiveItem {
@@ -322,9 +391,9 @@ export class OmekaAdapter implements DataAdapter {
   }
 
   /**
-   * Transform Omeka item to ItemDetail
+   * Transform Omeka item to ItemDetail (sync version without IIIF)
    */
-  private transformItemDetail(item: OmekaItem): ItemDetail {
+  private transformItemDetailSync(item: OmekaItem): ItemDetail {
     const base = this.transformItem(item);
 
     const description = this.getPropertyValue(item, PROPERTY_MAP.description);
@@ -332,6 +401,7 @@ export class OmekaAdapter implements DataAdapter {
     const publisher = this.getPropertyValue(item, PROPERTY_MAP.publisher);
     const rights = this.getPropertyValue(item, PROPERTY_MAP.rights);
     const fullImageUrl = this.getFullImageUrl(item);
+    const media = this.parseMedia(item);
 
     return {
       ...base,
@@ -340,7 +410,72 @@ export class OmekaAdapter implements DataAdapter {
       publisher: publisher || null,
       rights: rights || null,
       fullImageUrl: fullImageUrl || base.thumbnailUrl,
+      media: media.length > 0 ? media : undefined,
       raw: item,
+    };
+  }
+
+  /**
+   * Fetch document source (IIIF manifest or PDF) from media details
+   */
+  private async fetchDocumentSource(mediaRefs: OmekaMediaRef[]): Promise<DocumentSource | null> {
+    // Try each media reference until we find viewable content
+    for (const ref of mediaRefs) {
+      if (!ref["@id"]) continue;
+      
+      try {
+        const response = await fetch(ref["@id"], {
+          headers: { Accept: "application/json" },
+        });
+        
+        if (!response.ok) continue;
+        
+        const mediaDetail = await response.json();
+        
+        // Check for IIIF manifest in o:source (common for IIIF ingesters)
+        if (mediaDetail["o:source"] && 
+            typeof mediaDetail["o:source"] === "string" &&
+            mediaDetail["o:source"].includes("manifest")) {
+          return { type: "iiif", url: mediaDetail["o:source"] };
+        }
+        
+        // Check for IIIF ingester type
+        if (mediaDetail["o:ingester"] === "iiif" && mediaDetail["o:source"]) {
+          return { type: "iiif", url: mediaDetail["o:source"] };
+        }
+        
+        // Check for direct PDF
+        if (mediaDetail["o:media_type"] === "application/pdf") {
+          // Prefer o:original_url, fallback to o:source
+          const pdfUrl = mediaDetail["o:original_url"] || mediaDetail["o:source"];
+          if (pdfUrl && typeof pdfUrl === "string") {
+            return { type: "pdf", url: pdfUrl };
+          }
+        }
+      } catch {
+        // Continue to next media
+        continue;
+      }
+    }
+    
+    return null;
+  }
+
+  /**
+   * Transform Omeka item to ItemDetail with document source support
+   */
+  private async transformItemDetail(item: OmekaItem): Promise<ItemDetail> {
+    const base = this.transformItemDetailSync(item);
+    
+    // Try to get document source (IIIF manifest or PDF) from media
+    let documentSource: DocumentSource | null = null;
+    if (item["o:media"] && item["o:media"].length > 0) {
+      documentSource = await this.fetchDocumentSource(item["o:media"] as OmekaMediaRef[]);
+    }
+
+    return {
+      ...base,
+      documentSource,
     };
   }
 
@@ -650,7 +785,7 @@ export class OmekaAdapter implements DataAdapter {
       }
 
       const item = await response.json();
-      return this.transformItemDetail(item);
+      return await this.transformItemDetail(item);
     } catch (error) {
       console.error(`Error fetching item ${id}:`, error);
       return null;
@@ -674,6 +809,9 @@ interface OmekaItem {
 
 interface OmekaMedia {
   "o:id"?: number;
+  "o:title"?: string;
+  "o:original_url"?: string;
+  "o:media_type"?: string;
   "o:thumbnail_url"?: string;
   "o:thumbnail_urls"?: Record<string, string>;
   [key: string]: unknown;
@@ -683,5 +821,10 @@ interface OmekaItemSet {
   "o:id"?: number;
   "o:title"?: string;
   [key: string]: unknown;
+}
+
+interface OmekaMediaRef {
+  "@id"?: string;
+  "o:id"?: number;
 }
 
