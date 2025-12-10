@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useCallback, useMemo, useState } from "react";
+import { useEffect, useRef, useCallback, useMemo } from "react";
 import { useCanvasStore } from "@/store/canvas-store";
 import { CanvasItemCard } from "./CanvasItemCard";
-import { getVisibleTiles, cullItems, TILE_DIMENSIONS, getTileKey, hashFilters } from "@/lib/canvas-utils";
+import { getVisibleTiles, cullItems, TILE_DIMENSIONS } from "@/lib/canvas-utils";
 
 export function InfiniteCanvas() {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -12,7 +12,6 @@ export function InfiniteCanvas() {
   const lastTimeRef = useRef<number>(0);
   const momentumRef = useRef<number | null>(null);
   const tileLoadTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
 
   const {
     cameraX,
@@ -28,7 +27,6 @@ export function InfiniteCanvas() {
     loadTile,
     getAllVisibleItems,
     setSelectedItem,
-    tiles,
   } = useCanvasStore();
 
   // Handle viewport resize
@@ -60,8 +58,6 @@ export function InfiniteCanvas() {
       viewportHeight
     );
 
-    let hasLoading = false;
-
     // Load center tiles first
     const centerX = -cameraX + viewportWidth / 2;
     const centerY = -cameraY + viewportHeight / 2;
@@ -74,16 +70,10 @@ export function InfiniteCanvas() {
       return distA - distB;
     });
 
-    const filtersHash = hashFilters(filters);
     sortedTiles.forEach(({ tileX, tileY }) => {
-      const key = getTileKey(tileX, tileY, "", filtersHash);
-      const tileData = tiles.get(key);
-      if (tileData?.loading) hasLoading = true;
       loadTile(tileX, tileY);
     });
-
-    setIsLoading(hasLoading);
-  }, [cameraX, cameraY, viewportWidth, viewportHeight, loadTile, tiles, filters]);
+  }, [cameraX, cameraY, viewportWidth, viewportHeight, loadTile]);
 
   // Initial load when viewport becomes ready
   useEffect(() => {
@@ -278,28 +268,6 @@ export function InfiniteCanvas() {
           />
         ))}
       </div>
-
-      {/* Loading indicator */}
-      {isLoading && (
-        <div className="absolute top-20 left-1/2 -translate-x-1/2 z-10">
-          <div
-            className="px-3 py-1.5 rounded-full text-xs flex items-center gap-2"
-            style={{
-              background: "rgba(255,255,255,0.1)",
-              backdropFilter: "blur(10px)",
-            }}
-          >
-            <div
-              className="w-3 h-3 rounded-full border-2 animate-spin"
-              style={{
-                borderColor: "rgba(255,255,255,0.2)",
-                borderTopColor: "white",
-              }}
-            />
-            <span style={{ color: "rgba(255,255,255,0.6)" }}>Loading...</span>
-          </div>
-        </div>
-      )}
 
       {/* Subtle vignette */}
       <div

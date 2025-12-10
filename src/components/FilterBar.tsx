@@ -13,9 +13,22 @@ type FilterCategory = "language" | "type" | "period" | null;
 
 export function FilterBar() {
   const [activeDropdown, setActiveDropdown] = useState<FilterCategory>(null);
+  const [isLoading, setIsLoading] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   
-  const { filters, setFilters, clearTiles } = useCanvasStore();
+  const { filters, setFilters, clearTiles, tiles } = useCanvasStore();
+
+  // Check if any tiles are loading
+  useEffect(() => {
+    let hasLoading = false;
+    for (const tileData of tiles.values()) {
+      if (tileData.loading) {
+        hasLoading = true;
+        break;
+      }
+    }
+    setIsLoading(hasLoading);
+  }, [tiles]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -179,6 +192,25 @@ export function FilterBar() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
+          </>
+        )}
+
+        {/* Loading indicator */}
+        {isLoading && (
+          <>
+            <div className="w-px h-4 bg-white/10 flex-shrink-0" />
+            <div className="flex items-center gap-1.5 flex-shrink-0">
+              <div
+                className="w-3 h-3 rounded-full border-2 animate-spin"
+                style={{
+                  borderColor: "rgba(255,255,255,0.2)",
+                  borderTopColor: "white",
+                }}
+              />
+              <span className="text-xs" style={{ color: "rgba(255,255,255,0.6)" }}>
+                Loading...
+              </span>
+            </div>
           </>
         )}
       </div>

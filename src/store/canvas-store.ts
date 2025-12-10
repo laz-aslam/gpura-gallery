@@ -56,6 +56,7 @@ interface CanvasState {
   setSelectedItem: (id: string | null) => void;
   setDragging: (isDragging: boolean) => void;
   getAllVisibleItems: () => CanvasItem[];
+  isAnyTileLoading: () => boolean;
 }
 
 export const useCanvasStore = create<CanvasState>((set, get) => ({
@@ -214,5 +215,13 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     });
 
     return allItems;
+  },
+
+  isAnyTileLoading: () => {
+    const state = get();
+    for (const tileData of state.tiles.values()) {
+      if (tileData.loading) return true;
+    }
+    return false;
   },
 }));
