@@ -64,7 +64,7 @@ export default function Home() {
             rel="noopener noreferrer"
             className="px-2.5 py-1 rounded-full text-xs font-medium transition-colors hover:bg-white/10"
           >
-            gpura.org →
+            gpura.org
           </a>
         </div>
       </header>
