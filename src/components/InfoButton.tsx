@@ -33,26 +33,50 @@ export function InfoButton() {
       {isOpen && (
         <div
           ref={popupRef}
-          className="absolute bottom-12 right-0 w-72 p-4 rounded-lg backdrop-animate"
+          className="absolute bottom-12 right-0 w-80 p-4 rounded-lg backdrop-animate"
           style={{
             background: "rgba(20, 20, 20, 0.95)",
             border: "1px solid rgba(255, 255, 255, 0.1)",
             boxShadow: "0 8px 32px rgba(0, 0, 0, 0.4)",
           }}
         >
+          <p className="text-xs leading-relaxed mb-3" style={{ color: "rgba(255, 255, 255, 0.7)" }}>
+            കേരളവുമായി ബന്ധപ്പെട്ട്, എല്ലാ ഭാഷകളിലും ലിപികളിലും ഉള്ള കൈയെഴുത്ത് രേഖകൾ, അച്ചടി പുസ്തകങ്ങൾ, ചിത്രങ്ങൾ, ഓഡിയോ, വീഡിയോ തുടങ്ങിയവ ശേഖരിച്ച് ഡിജിറ്റൈസ് ചെയ്ത് പൊതുവായി പങ്കുവെക്കുന്ന പദ്ധതി.
+          </p>
           <p className="text-xs leading-relaxed" style={{ color: "rgba(255, 255, 255, 0.7)" }}>
-            Explore digitised books, periodicals, and artefacts from Kerala's heritage. 
-            Content sourced from{" "}
+            Granthappura (ഗ്രന്ഥപ്പുര) by{" "}
             <a
               href={siteConfig.links.classicSite}
               target="_blank"
               rel="noopener noreferrer"
               className="underline hover:text-white transition-colors"
             >
-              Granthappura
-            </a>
-            's digital archive.
+              Indic Digital Archive Foundation
+            </a>{" "}
+            is a diverse collection of digitized artefacts related to Kerala, across various languages and scripts.
           </p>
+          <div className="mt-3 pt-3 flex flex-wrap gap-y-3" style={{ borderTop: "1px solid rgba(255, 255, 255, 0.1)" }}>
+            <div className="text-center" style={{ width: "33.33%" }}>
+              <div className="text-sm font-semibold text-white">6,782</div>
+              <div className="text-[10px]" style={{ color: "rgba(255, 255, 255, 0.5)" }}>Items</div>
+            </div>
+            <div className="text-center" style={{ width: "33.33%" }}>
+              <div className="text-sm font-semibold text-white">14</div>
+              <div className="text-[10px]" style={{ color: "rgba(255, 255, 255, 0.5)" }}>Languages</div>
+            </div>
+            <div className="text-center" style={{ width: "33.33%" }}>
+              <div className="text-sm font-semibold text-white">42</div>
+              <div className="text-[10px]" style={{ color: "rgba(255, 255, 255, 0.5)" }}>Collections</div>
+            </div>
+            <div className="text-center" style={{ width: "33.33%" }}>
+              <div className="text-sm font-semibold text-white">1,337</div>
+              <div className="text-[10px]" style={{ color: "rgba(255, 255, 255, 0.5)" }}>Authors</div>
+            </div>
+            <div className="text-center" style={{ width: "33.33%" }}>
+              <div className="text-sm font-semibold text-white">7,21,036</div>
+              <div className="text-[10px]" style={{ color: "rgba(255, 255, 255, 0.5)" }}>Pages</div>
+            </div>
+          </div>
           <div className="mt-3 pt-3" style={{ borderTop: "1px solid rgba(255, 255, 255, 0.1)" }}>
             <div className="flex flex-col gap-2">
               <a
