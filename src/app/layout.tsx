@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
+import Script from "next/script";
 import "./globals.css";
 import { siteConfig } from "@/config/site";
 
@@ -61,6 +62,12 @@ export default function RootLayout({
     <html lang="en">
       <body className={`${inter.variable} antialiased`} style={{ fontFamily: "var(--font-inter), system-ui, sans-serif" }}>
         {children}
+        <Script
+          defer
+          src="https://static.cloudflareinsights.com/beacon.min.js"
+          data-cf-beacon='{"token": "940b18d11275471cae164ae58e15a7a5"}'
+          strategy="afterInteractive"
+        />
       </body>
     </html>
   );
