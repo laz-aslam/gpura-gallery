@@ -1,6 +1,6 @@
 # gpura
 
-> A [Public Work](https://public.work)-inspired infinite canvas for exploring [Granthappura](https://gpura.org) — Kerala's Digital Archive
+> An infinite canvas for exploring [Granthappura](https://gpura.org) — Kerala's Digital Archive
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Next.js](https://img.shields.io/badge/Next.js-15-black)
@@ -8,7 +8,7 @@
 
 ## Overview
 
-gpura is an immersive visual discovery interface for browsing Kerala's digital heritage. Inspired by [Public Work by Cosmos](https://www.cosmos.so/public-work), it presents archive items as an infinite mural of images that you can pan, zoom, and explore in any direction.
+gpura is an immersive visual discovery interface for browsing Kerala's digital heritage. It presents archive items as an infinite mural of images that you can pan, zoom, and explore in any direction.
 
 ### Features
 
@@ -69,15 +69,6 @@ export const siteConfig = {
 };
 ```
 
-### Switch to Real Data
-
-By default, the app uses mock data. To use the real gpura API:
-
-```typescript
-// src/store/canvas-store.ts
-useMockData: false
-```
-
 ## Architecture
 
 ```
@@ -118,8 +109,6 @@ This works with any [Omeka S](https://omeka.org/s/) installation:
 ## Attribution
 
 - Content from [Granthappura / gpura.org](https://gpura.org)
-- Design inspired by [Public Work](https://public.work) by Cosmos
-- Many collections available under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/)
 
 ## License
 

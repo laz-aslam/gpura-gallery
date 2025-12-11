@@ -1,5 +1,5 @@
 export const siteConfig = {
-  name: "gpura",
+  name: "gpura gallery",
   tagline: "Explore Kerala's digital archive",
   description: "Search through thousands of digitised books, periodicals, and artefacts from Granthappura.",
   links: {
