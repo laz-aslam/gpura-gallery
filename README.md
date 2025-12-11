@@ -17,7 +17,6 @@ gpura is an immersive visual discovery interface for browsing Kerala's digital h
 - **Search** — Find items across 6,700+ digitised artefacts
 - **Minimal UI** — Images are the focus, metadata appears on hover
 - **Fast** — Tile-based loading with viewport culling
-- **Mobile-friendly** — Touch gestures supported
 
 ## Quick Start
 

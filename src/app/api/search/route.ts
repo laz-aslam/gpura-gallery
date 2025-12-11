@@ -1,60 +1,84 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDataAdapter } from "@/server/adapters/DataAdapter";
-import type { SearchFilters } from "@/lib/types";
+import type { SearchFilters, SearchResponse } from "@/lib/types";
+
+// In-memory cache for search results
+const searchCache = new Map<string, { data: SearchResponse; timestamp: number }>();
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes for search results
 
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
-
-    // Parse query parameters
-    const q = searchParams.get("q") || undefined;
+    const q = searchParams.get("q") || "";
     const page = parseInt(searchParams.get("page") || "1", 10);
-    const pageSize = parseInt(searchParams.get("pageSize") || "40", 10);
+    const pageSize = parseInt(searchParams.get("pageSize") || "50", 10);
 
-    // Parse filters
-    const filters: SearchFilters = {};
-
-    const languages = searchParams.get("languages");
-    if (languages) {
-      filters.languages = languages.split(",").filter(Boolean);
+    // Parse filters if provided
+    let filters: SearchFilters | undefined;
+    const filtersParam = searchParams.get("filters");
+    if (filtersParam) {
+      try {
+        filters = JSON.parse(filtersParam);
+      } catch {
+        // Ignore parse errors
+      }
     }
 
-    const types = searchParams.get("types");
-    if (types) {
-      filters.types = types.split(",").filter(Boolean);
+    // Require a search query
+    if (!q.trim()) {
+      return NextResponse.json(
+        { items: [], total: 0, facets: {} },
+        { status: 200 }
+      );
     }
 
-    const collections = searchParams.get("collections");
-    if (collections) {
-      filters.collections = collections.split(",").filter(Boolean);
+    // Create cache key
+    const cacheKey = `${q}:${page}:${pageSize}:${filtersParam || ""}`;
+
+    // Check cache
+    const cached = searchCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+      return NextResponse.json(cached.data, {
+        headers: {
+          "Cache-Control": "public, max-age=300",
+          "X-Cache": "HIT",
+        },
+      });
     }
 
-    const yearMin = searchParams.get("yearMin");
-    if (yearMin) {
-      filters.yearMin = parseInt(yearMin, 10);
-    }
-
-    const yearMax = searchParams.get("yearMax");
-    if (yearMax) {
-      filters.yearMax = parseInt(yearMax, 10);
-    }
-
-    // Get adapter and perform search
+    // Fetch from adapter
     const adapter = await getDataAdapter();
     const response = await adapter.search({
       q,
-      filters: Object.keys(filters).length > 0 ? filters : undefined,
+      filters,
       page,
       pageSize,
     });
 
-    return NextResponse.json(response);
+    // Store in cache
+    searchCache.set(cacheKey, { data: response, timestamp: Date.now() });
+
+    // Clean old cache entries
+    if (searchCache.size > 100) {
+      const now = Date.now();
+      for (const [key, value] of searchCache.entries()) {
+        if (now - value.timestamp > CACHE_TTL) {
+          searchCache.delete(key);
+        }
+      }
+    }
+
+    return NextResponse.json(response, {
+      headers: {
+        "Cache-Control": "public, max-age=300",
+        "X-Cache": "MISS",
+      },
+    });
   } catch (error) {
     console.error("Search API error:", error);
     return NextResponse.json(
-      { error: "Failed to search items" },
+      { error: "Failed to search items", items: [], total: 0 },
       { status: 500 }
     );
   }
 }
-

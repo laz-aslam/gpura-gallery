@@ -28,6 +28,10 @@ export function InfiniteCanvas() {
     loadTile,
     getAllVisibleItems,
     setSelectedItem,
+    isSearchMode,
+    search,
+    getSearchResultsAsCanvasItems,
+    loadMoreSearchResults,
   } = useCanvasStore();
 
   // Handle viewport resize
@@ -76,15 +80,18 @@ export function InfiniteCanvas() {
     });
   }, [cameraX, cameraY, viewportWidth, viewportHeight, loadTile]);
 
-  // Initial load when viewport becomes ready
+  // Initial load when viewport becomes ready (skip in search mode)
   useEffect(() => {
-    if (viewportWidth > 0 && viewportHeight > 0) {
+    if (viewportWidth > 0 && viewportHeight > 0 && !isSearchMode) {
       loadVisibleTiles();
     }
-  }, [viewportWidth > 0, viewportHeight > 0, loadVisibleTiles]);
+  }, [viewportWidth > 0, viewportHeight > 0, loadVisibleTiles, isSearchMode]);
 
   // Load tiles with debounce during movement, or immediately when filters change
+  // Skip tile loading in search mode
   useEffect(() => {
+    if (isSearchMode) return;
+
     if (tileLoadTimeoutRef.current) {
       clearTimeout(tileLoadTimeoutRef.current);
     }
@@ -101,28 +108,46 @@ export function InfiniteCanvas() {
         clearTimeout(tileLoadTimeoutRef.current);
       }
     };
-  }, [cameraX, cameraY, isDragging, loadVisibleTiles, filters]);
+  }, [cameraX, cameraY, isDragging, loadVisibleTiles, filters, isSearchMode]);
 
-  // Collect and process items - repack when filters are active
+  // Load more search results when scrolling down
+  useEffect(() => {
+    if (!isSearchMode || !search.hasMore || search.loading) return;
+
+    // Check if user has scrolled near the bottom of current results
+    const searchItems = getSearchResultsAsCanvasItems();
+    if (searchItems.length === 0) return;
+
+    const lastItem = searchItems[searchItems.length - 1];
+    const bottomOfContent = lastItem.y + lastItem.height;
+    const viewBottom = -cameraY + viewportHeight;
+
+    // Load more when within 500px of the bottom
+    if (viewBottom > bottomOfContent - 500) {
+      loadMoreSearchResults();
+    }
+  }, [cameraY, viewportHeight, isSearchMode, search.hasMore, search.loading, getSearchResultsAsCanvasItems, loadMoreSearchResults]);
+
+  // Collect and process items - use search results when in search mode
   const visibleItems = useMemo(() => {
+    // In search mode, use search results in a dense grid
+    if (isSearchMode) {
+      const searchItems = getSearchResultsAsCanvasItems();
+      return cullItems(
+        searchItems,
+        cameraX,
+        cameraY,
+        viewportWidth,
+        viewportHeight
+      );
+    }
+
     // Collect all items from loaded tiles
     const allItems = getAllVisibleItems();
     
     // When filters are active, repack items into a dense grid
     const shouldRepack = hasActiveFilters(filters);
     const processedItems = shouldRepack ? repackItemsToGrid(allItems) : allItems;
-    
-    // Debug logging
-    if (shouldRepack && allItems.length > 0) {
-      console.log('[DEBUG] Repacking active:', {
-        filtersActive: shouldRepack,
-        filters,
-        totalItems: allItems.length,
-        camera: { x: cameraX, y: cameraY },
-        sampleOriginalPos: allItems[0] ? { x: allItems[0].x, y: allItems[0].y } : null,
-        sampleRepackedPos: processedItems[0] ? { x: processedItems[0].x, y: processedItems[0].y } : null,
-      });
-    }
     
     // Cull to only visible items
     return cullItems(
@@ -132,7 +157,7 @@ export function InfiniteCanvas() {
       viewportWidth,
       viewportHeight
     );
-  }, [getAllVisibleItems, cameraX, cameraY, viewportWidth, viewportHeight, tiles, filters]);
+  }, [getAllVisibleItems, getSearchResultsAsCanvasItems, isSearchMode, cameraX, cameraY, viewportWidth, viewportHeight, tiles, filters, search.results]);
 
   // Momentum animation
   const animateMomentum = useCallback(() => {
@@ -288,6 +313,20 @@ export function InfiniteCanvas() {
           />
         ))}
       </div>
+
+      {/* Search empty state */}
+      {isSearchMode && !search.loading && search.results.length === 0 && (
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <div className="text-center">
+            <p className="text-lg" style={{ color: "rgba(255,255,255,0.5)" }}>
+              No results found
+            </p>
+            <p className="text-sm mt-1" style={{ color: "rgba(255,255,255,0.3)" }}>
+              Try a different search term
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Subtle vignette */}
       <div

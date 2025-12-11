@@ -125,7 +125,17 @@ body {
 }
 
 .search-input::placeholder {
-  color: var(--muted);
+  color: rgba(255, 255, 255, 0.4);
+  opacity: 1;
+}
+
+.search-input:focus {
+  outline: none;
+  box-shadow: none;
+}
+
+.search-input:focus-visible {
+  outline: none;
 }
 
 /* Drawer animation */

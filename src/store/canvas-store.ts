@@ -2,7 +2,7 @@
 
 import { create } from "zustand";
 import { canvasConfig } from "@/config/site";
-import type { CanvasItem, SearchFilters } from "@/lib/types";
+import type { ArchiveItem, CanvasItem, SearchFilters } from "@/lib/types";
 import {
   getTileKey,
   itemsToCanvasItems,
@@ -14,6 +14,15 @@ interface TileData {
   loading: boolean;
   error?: string;
   timestamp: number;
+}
+
+interface SearchState {
+  results: ArchiveItem[];
+  total: number;
+  loading: boolean;
+  error?: string;
+  page: number;
+  hasMore: boolean;
 }
 
 const CACHE_TTL = 30 * 60 * 1000; // 30 minutes - match server cache
@@ -46,6 +55,10 @@ interface CanvasState {
   filters: SearchFilters;
   selectedItemId: string | null;
   isDragging: boolean;
+  
+  // Search mode state
+  isSearchMode: boolean;
+  search: SearchState;
 
   setCamera: (x: number, y: number) => void;
   pan: (deltaX: number, deltaY: number) => void;
@@ -60,6 +73,12 @@ interface CanvasState {
   setDragging: (isDragging: boolean) => void;
   getAllVisibleItems: () => CanvasItem[];
   isAnyTileLoading: () => boolean;
+  
+  // Search mode actions
+  performSearch: (query: string) => Promise<void>;
+  loadMoreSearchResults: () => Promise<void>;
+  clearSearch: () => void;
+  getSearchResultsAsCanvasItems: () => CanvasItem[];
 }
 
 export const useCanvasStore = create<CanvasState>((set, get) => ({
@@ -72,6 +91,16 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   filters: {},
   selectedItemId: null,
   isDragging: false,
+  
+  // Search mode initial state
+  isSearchMode: false,
+  search: {
+    results: [],
+    total: 0,
+    loading: false,
+    page: 1,
+    hasMore: false,
+  },
 
   setCamera: (x, y) => set({ cameraX: x, cameraY: y }),
 
@@ -227,5 +256,190 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       if (tileData.loading) return true;
     }
     return false;
+  },
+
+  // Search mode actions
+  performSearch: async (query: string) => {
+    const trimmedQuery = query.trim();
+    
+    if (!trimmedQuery) {
+      get().clearSearch();
+      return;
+    }
+
+    const currentState = get();
+    
+    // Skip if already searching for the same query
+    if (currentState.search.loading && currentState.query === trimmedQuery) {
+      return;
+    }
+
+    // Clear tiles when entering search mode
+    get().clearTiles();
+
+    set({
+      query: trimmedQuery,
+      isSearchMode: true,
+      cameraX: 0,
+      cameraY: 0,
+      search: {
+        results: [],
+        total: 0,
+        loading: true,
+        page: 1,
+        hasMore: false,
+      },
+    });
+
+    try {
+      const state = get();
+      const params = new URLSearchParams({
+        q: trimmedQuery,
+        page: "1",
+        pageSize: "100",
+      });
+
+      if (Object.keys(state.filters).length > 0) {
+        params.set("filters", JSON.stringify(state.filters));
+      }
+
+      const response = await fetch(`/api/search?${params}`);
+      if (!response.ok) {
+        throw new Error("Search failed");
+      }
+
+      const data = await response.json();
+      
+      set({
+        search: {
+          results: data.items || [],
+          total: data.total || 0,
+          loading: false,
+          page: 1,
+          hasMore: (data.items?.length || 0) < (data.total || 0),
+        },
+      });
+    } catch (error) {
+      set({
+        search: {
+          results: [],
+          total: 0,
+          loading: false,
+          error: error instanceof Error ? error.message : "Search failed",
+          page: 1,
+          hasMore: false,
+        },
+      });
+    }
+  },
+
+  loadMoreSearchResults: async () => {
+    const state = get();
+    if (!state.isSearchMode || state.search.loading || !state.search.hasMore) {
+      return;
+    }
+
+    const nextPage = state.search.page + 1;
+
+    set((s) => ({
+      search: { ...s.search, loading: true },
+    }));
+
+    try {
+      const params = new URLSearchParams({
+        q: state.query,
+        page: nextPage.toString(),
+        pageSize: "100",
+      });
+
+      if (Object.keys(state.filters).length > 0) {
+        params.set("filters", JSON.stringify(state.filters));
+      }
+
+      const response = await fetch(`/api/search?${params}`);
+      if (!response.ok) {
+        throw new Error("Search failed");
+      }
+
+      const data = await response.json();
+      
+      set((s) => ({
+        search: {
+          results: [...s.search.results, ...(data.items || [])],
+          total: data.total || s.search.total,
+          loading: false,
+          page: nextPage,
+          hasMore: s.search.results.length + (data.items?.length || 0) < (data.total || 0),
+        },
+      }));
+    } catch (error) {
+      set((s) => ({
+        search: {
+          ...s.search,
+          loading: false,
+          error: error instanceof Error ? error.message : "Failed to load more",
+        },
+      }));
+    }
+  },
+
+  clearSearch: () => {
+    set({
+      query: "",
+      isSearchMode: false,
+      cameraX: 0,
+      cameraY: 0,
+      search: {
+        results: [],
+        total: 0,
+        loading: false,
+        page: 1,
+        hasMore: false,
+      },
+    });
+    get().clearTiles();
+  },
+
+  getSearchResultsAsCanvasItems: () => {
+    const state = get();
+    if (!state.isSearchMode) return [];
+
+    const { CARD_WIDTH, CARD_HEIGHT, CARD_GAP } = canvasConfig;
+    
+    // Calculate how many columns fit in the viewport (responsive)
+    const viewportWidth = state.viewportWidth || 1200;
+    const cardWithGap = CARD_WIDTH + CARD_GAP;
+    const cols = Math.max(3, Math.floor((viewportWidth - CARD_GAP) / cardWithGap));
+    
+    // Calculate starting X to center the grid horizontally
+    const gridWidth = cols * cardWithGap;
+    const startX = Math.max(CARD_GAP, (viewportWidth - gridWidth) / 2);
+    
+    // Start Y below the header (with some padding)
+    const startY = 80;
+
+    // Convert search results to canvas items in a dense grid
+    return state.search.results.map((item, index) => {
+      const col = index % cols;
+      const row = Math.floor(index / cols);
+
+      const x = startX + col * cardWithGap;
+      const y = startY + row * (CARD_HEIGHT + CARD_GAP);
+
+      // Slight rotation for visual interest
+      const seed = parseInt(item.id, 10) || index;
+      const rotation = (Math.sin(seed * 12.9898) * 43758.5453 % 1 - 0.5) * 4;
+
+      return {
+        ...item,
+        x,
+        y,
+        width: CARD_WIDTH,
+        height: CARD_HEIGHT,
+        rotation,
+        tileX: 0,
+        tileY: Math.floor(index / (cols * 5)),
+      };
+    });
   },
 }));
