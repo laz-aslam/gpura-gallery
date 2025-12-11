@@ -11,9 +11,16 @@ const TYPES = ["book", "periodical", "manuscript", "image", "newspaper"] as cons
 
 type FilterCategory = "language" | "type" | "period" | null;
 
+// Year range constants for the slider
+const MIN_YEAR = 1800;
+const MAX_YEAR = new Date().getFullYear();
+
 export function FilterBar() {
   const [activeDropdown, setActiveDropdown] = useState<FilterCategory>(null);
   const [searchInput, setSearchInput] = useState("");
+  const [yearRangeMin, setYearRangeMin] = useState(MIN_YEAR);
+  const [yearRangeMax, setYearRangeMax] = useState(MAX_YEAR);
+  const [isCustomRangeActive, setIsCustomRangeActive] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   
@@ -21,7 +28,6 @@ export function FilterBar() {
     filters, 
     setFilters, 
     resetView,
-    query,
     isSearchMode,
     search,
     performSearch,
@@ -114,10 +120,10 @@ export function FilterBar() {
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [isSearchMode, handleClearSearch]);
 
-  const updateFilter = (newFilters: SearchFilters) => {
+  const updateFilter = useCallback((newFilters: SearchFilters) => {
     // Reset camera FIRST so tile loading uses correct position
     resetView();
-    // setFilters already calls clearTiles internally
+    // setFilters already calls clearTiles and fetchFilterCount internally
     setFilters(newFilters);
     
     // If in search mode, re-run search with new filters
@@ -126,7 +132,7 @@ export function FilterBar() {
       lastSearchedRef.current = "";
       setTimeout(() => performSearch(searchInput.trim()), 0);
     }
-  };
+  }, [resetView, setFilters, isSearchMode, searchInput, performSearch]);
 
   const toggleLanguage = (lang: string) => {
     const current = filters.languages || [];
@@ -155,13 +161,67 @@ export function FilterBar() {
   const removePeriod = (label: string) => {
     const current = filters.periods || [];
     const newPeriods = current.filter((p) => p !== label);
+    
+    // Check if removing a custom range
+    if (label.match(/^\d{4}–\d{4}$/)) {
+      setIsCustomRangeActive(false);
+      setYearRangeMin(MIN_YEAR);
+      setYearRangeMax(MAX_YEAR);
+    }
+    
     updateFilter({ ...filters, periods: newPeriods.length ? newPeriods : undefined });
   };
 
-  const clearAllFilters = () => {
+  // Debounced real-time year range filter
+  useEffect(() => {
+    // Skip if slider is at default full range
+    if (yearRangeMin === MIN_YEAR && yearRangeMax === MAX_YEAR) {
+      // If there was a custom range active, remove it
+      if (isCustomRangeActive) {
+        setIsCustomRangeActive(false);
+        const current = filters.periods || [];
+        const withoutCustom = current.filter(p => !p.match(/^\d{4}–\d{4}$/));
+        if (withoutCustom.length !== current.length) {
+          updateFilter({ ...filters, periods: withoutCustom.length ? withoutCustom : undefined });
+        }
+      }
+      return;
+    }
+    
+    // Debounce the filter update
+    const timeout = setTimeout(() => {
+      const label = `${yearRangeMin}–${yearRangeMax}`;
+      const current = filters.periods || [];
+      
+      // Check if this exact range is already applied
+      if (current.includes(label)) return;
+      
+      // Remove any existing custom ranges (format: YYYY–YYYY)
+      const withoutCustom = current.filter(p => !p.match(/^\d{4}–\d{4}$/));
+      
+      setIsCustomRangeActive(true);
+      updateFilter({ ...filters, periods: [...withoutCustom, label] });
+    }, 300);
+    
+    return () => clearTimeout(timeout);
+  }, [yearRangeMin, yearRangeMax, filters, isCustomRangeActive, updateFilter]);
+
+  // Reset year range slider
+  const resetYearRange = useCallback(() => {
+    setYearRangeMin(MIN_YEAR);
+    setYearRangeMax(MAX_YEAR);
+    // The effect above will handle removing the filter
+  }, []);
+
+  const clearAllFilters = useCallback(() => {
+    // Reset year range slider
+    setYearRangeMin(MIN_YEAR);
+    setYearRangeMax(MAX_YEAR);
+    setIsCustomRangeActive(false);
+    // Clear all filters
     updateFilter({});
     setActiveDropdown(null);
-  };
+  }, [updateFilter]);
 
   const hasActiveFilters = 
     (filters.languages && filters.languages.length > 0) ||
@@ -260,7 +320,7 @@ export function FilterBar() {
           )}
         </form>
 
-        {/* Search results count - shown right after search input */}
+        {/* Results count - only for search mode where we have accurate totals */}
         {isSearchMode && !search.loading && search.total > 0 && (
           <span className="text-xs flex-shrink-0" style={{ color: "rgba(255,255,255,0.5)" }}>
             {search.total.toLocaleString()} results
@@ -324,7 +384,75 @@ export function FilterBar() {
               disabled={search.loading}
             />
             {activeDropdown === "period" && !search.loading && (
-              <Dropdown>
+              <Dropdown wide>
+                {/* Year range slider */}
+                <div className="px-4 py-3 border-b" style={{ borderColor: "rgba(255,255,255,0.1)" }}>
+                  <div className="flex items-center justify-between mb-3">
+                    <label className="text-xs uppercase tracking-wider" style={{ color: "#666" }}>
+                      Year Range
+                    </label>
+                    {isCustomRangeActive && (
+                      <button
+                        onClick={resetYearRange}
+                        className="text-xs hover:underline"
+                        style={{ color: "#888" }}
+                      >
+                        Reset
+                      </button>
+                    )}
+                  </div>
+                  
+                  {/* Year display */}
+                  <div className="flex items-center justify-between mb-3 text-sm font-medium tabular-nums">
+                    <span>{yearRangeMin}</span>
+                    <span style={{ color: "#666" }}>–</span>
+                    <span>{yearRangeMax}</span>
+                  </div>
+                  
+                  {/* Dual range slider */}
+                  <div className="relative h-6 flex items-center">
+                    {/* Track background */}
+                    <div 
+                      className="absolute w-full h-1 rounded-full"
+                      style={{ background: "rgba(255,255,255,0.1)" }}
+                    />
+                    {/* Active track */}
+                    <div 
+                      className="absolute h-1 rounded-full"
+                      style={{ 
+                        background: isCustomRangeActive ? "rgba(255,255,255,0.5)" : "rgba(255,255,255,0.3)",
+                        left: `${((yearRangeMin - MIN_YEAR) / (MAX_YEAR - MIN_YEAR)) * 100}%`,
+                        right: `${100 - ((yearRangeMax - MIN_YEAR) / (MAX_YEAR - MIN_YEAR)) * 100}%`,
+                      }}
+                    />
+                    {/* Min slider */}
+                    <input
+                      type="range"
+                      min={MIN_YEAR}
+                      max={MAX_YEAR}
+                      value={yearRangeMin}
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value, 10);
+                        if (val <= yearRangeMax - 1) setYearRangeMin(val);
+                      }}
+                      className="year-slider absolute w-full"
+                    />
+                    {/* Max slider */}
+                    <input
+                      type="range"
+                      min={MIN_YEAR}
+                      max={MAX_YEAR}
+                      value={yearRangeMax}
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value, 10);
+                        if (val >= yearRangeMin + 1) setYearRangeMax(val);
+                      }}
+                      className="year-slider absolute w-full"
+                    />
+                  </div>
+                </div>
+                
+                {/* Predefined time ranges */}
                 {TIME_RANGES.map((range) => (
                   <DropdownItem
                     key={range.label}
@@ -437,10 +565,10 @@ function FilterButton({
   );
 }
 
-function Dropdown({ children }: { children: React.ReactNode }) {
+function Dropdown({ children, wide = false }: { children: React.ReactNode; wide?: boolean }) {
   return (
     <div
-      className="absolute top-full left-0 mt-4 py-1 rounded-xl min-w-[180px] z-50"
+      className={`absolute top-full left-0 mt-4 py-1 rounded-xl z-50 ${wide ? "min-w-[260px]" : "min-w-[180px]"}`}
       style={{
         background: "rgba(20,20,20,0.95)",
         border: "1px solid rgba(255,255,255,0.1)",

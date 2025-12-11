@@ -361,7 +361,7 @@ export function DocumentViewer() {
           </div>
         )}
 
-        {/* PDF Viewer */}
+        {/* PDF Viewer - using Google Docs Viewer for online viewing */}
         {isPdf && !error && (
           <>
             {pdfLoading && (
@@ -379,7 +379,7 @@ export function DocumentViewer() {
               </div>
             )}
             <iframe
-              src={documentSource.url}
+              src={`https://docs.google.com/viewer?url=${encodeURIComponent(documentSource.url)}&embedded=true`}
               className="w-full h-full border-0"
               title={title}
               onLoad={handlePdfLoad}

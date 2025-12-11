@@ -24,8 +24,13 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Require a search query
-    if (!q.trim()) {
+    // Allow filter-only queries (for getting count) or search queries
+    const hasFilters = filters && Object.keys(filters).some(k => {
+      const val = filters[k as keyof SearchFilters];
+      return val !== undefined && (Array.isArray(val) ? val.length > 0 : true);
+    });
+    
+    if (!q.trim() && !hasFilters) {
       return NextResponse.json(
         { items: [], total: 0, facets: {} },
         { status: 200 }

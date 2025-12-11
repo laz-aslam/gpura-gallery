@@ -711,10 +711,31 @@ export class OmekaAdapter implements DataAdapter {
         );
       }
 
-      // Multi-select periods filter
+      // Multi-select periods filter (supports predefined ranges and custom years)
       if (req.filters.periods && req.filters.periods.length > 0) {
         const selectedRanges = req.filters.periods
-          .map(label => TIME_RANGES.find(r => r.label === label))
+          .map(label => {
+            // First try to find in predefined TIME_RANGES
+            const predefined = TIME_RANGES.find(r => r.label === label);
+            if (predefined) return predefined;
+            
+            // Try to parse as custom year or range (e.g., "1920" or "1920–1950")
+            const rangeMatch = label.match(/^(\d{3,4})\s*[–-]\s*(\d{3,4})$/);
+            if (rangeMatch) {
+              const min = parseInt(rangeMatch[1], 10);
+              const max = parseInt(rangeMatch[2], 10);
+              return { label, min, max };
+            }
+            
+            // Try single year
+            const yearMatch = label.match(/^(\d{3,4})$/);
+            if (yearMatch) {
+              const year = parseInt(yearMatch[1], 10);
+              return { label, min: year, max: year };
+            }
+            
+            return undefined;
+          })
           .filter(r => r !== undefined);
         
         if (selectedRanges.length > 0) {
@@ -739,9 +760,32 @@ export class OmekaAdapter implements DataAdapter {
       }
     }
 
+    // If client-side filtering was applied, we need to estimate the total
+    // Since we can't know the true filtered total without fetching everything,
+    // we return the filtered count for this page when filters reduce results significantly
+    const hasClientSideFilters = req.filters && (
+      req.filters.yearMin !== undefined ||
+      req.filters.yearMax !== undefined ||
+      (req.filters.periods && req.filters.periods.length > 0) ||
+      (req.filters.collections && req.filters.collections.length > 0)
+    );
+    
+    // Calculate estimated total based on filter ratio
+    let estimatedTotal = totalResults;
+    if (hasClientSideFilters && transformedItems.length > 0) {
+      const filterRatio = filteredItems.length / transformedItems.length;
+      // If ratio is 0, we can't reliably estimate - return -1 to indicate "unknown"
+      // This happens when the current page sample doesn't have items matching the filter
+      if (filterRatio === 0) {
+        estimatedTotal = -1; // Signal that count is unreliable
+      } else {
+        estimatedTotal = Math.round(totalResults * filterRatio);
+      }
+    }
+
     return {
       items: filteredItems,
-      total: totalResults,
+      total: estimatedTotal,
       facets: this.computeFacets(transformedItems),
     };
   }
@@ -839,10 +883,31 @@ export class OmekaAdapter implements DataAdapter {
         );
       }
 
-      // Multi-select periods filter
+      // Multi-select periods filter (supports predefined ranges and custom years)
       if (req.filters.periods && req.filters.periods.length > 0) {
         const selectedRanges = req.filters.periods
-          .map(label => TIME_RANGES.find(r => r.label === label))
+          .map(label => {
+            // First try to find in predefined TIME_RANGES
+            const predefined = TIME_RANGES.find(r => r.label === label);
+            if (predefined) return predefined;
+            
+            // Try to parse as custom year or range (e.g., "1920" or "1920–1950")
+            const rangeMatch = label.match(/^(\d{3,4})\s*[–-]\s*(\d{3,4})$/);
+            if (rangeMatch) {
+              const min = parseInt(rangeMatch[1], 10);
+              const max = parseInt(rangeMatch[2], 10);
+              return { label, min, max };
+            }
+            
+            // Try single year
+            const yearMatch = label.match(/^(\d{3,4})$/);
+            if (yearMatch) {
+              const year = parseInt(yearMatch[1], 10);
+              return { label, min: year, max: year };
+            }
+            
+            return undefined;
+          })
           .filter(r => r !== undefined);
         
         if (selectedRanges.length > 0) {
