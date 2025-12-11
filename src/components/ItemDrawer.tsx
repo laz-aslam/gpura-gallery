@@ -19,7 +19,7 @@ export function ItemDrawer() {
   // Open document viewer
   const handleReadDocument = useCallback(() => {
     if (item?.documentSource) {
-      openViewer(item.documentSource, item.title);
+      openViewer(item.documentSource, item.title, item.sourceUrl);
     }
   }, [item, openViewer]);
 

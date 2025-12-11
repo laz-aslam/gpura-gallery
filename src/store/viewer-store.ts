@@ -7,13 +7,14 @@ interface ViewerState {
   isOpen: boolean;
   documentSource: DocumentSource | null;
   title: string;
+  sourceUrl: string | null;
   pages: IIIFPage[];
   currentIndex: number;
   loading: boolean;
   error: string | null;
   
   // Actions
-  openViewer: (source: DocumentSource, title: string) => void;
+  openViewer: (source: DocumentSource, title: string, sourceUrl?: string) => void;
   closeViewer: () => void;
   nextPage: () => void;
   prevPage: () => void;
@@ -27,16 +28,18 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
   isOpen: false,
   documentSource: null,
   title: "",
+  sourceUrl: null,
   pages: [],
   currentIndex: 0,
   loading: false,
   error: null,
 
-  openViewer: (source, title) => {
+  openViewer: (source, title, sourceUrl) => {
     set({
       isOpen: true,
       documentSource: source,
       title,
+      sourceUrl: sourceUrl || null,
       pages: [],
       currentIndex: 0,
       loading: source.type === "iiif", // Only load for IIIF, PDF loads directly
@@ -49,6 +52,7 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
       isOpen: false,
       documentSource: null,
       title: "",
+      sourceUrl: null,
       pages: [],
       currentIndex: 0,
       loading: false,
