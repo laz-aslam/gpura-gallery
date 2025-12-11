@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useCallback, useMemo } from "react";
 import { useCanvasStore } from "@/store/canvas-store";
+import { useDeviceType } from "@/hooks/useDeviceType";
 import { CanvasItemCard } from "./CanvasItemCard";
 import { getVisibleTiles, cullItems, TILE_DIMENSIONS, repackItemsToGrid, hasActiveFilters } from "@/lib/canvas-utils";
 
@@ -12,6 +13,8 @@ export function InfiniteCanvas() {
   const lastTimeRef = useRef<number>(0);
   const momentumRef = useRef<number | null>(null);
   const tileLoadTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const hasDraggedRef = useRef(false); // Track if actual movement occurred
+  const { isTouch } = useDeviceType();
 
   const {
     cameraX,
@@ -189,6 +192,7 @@ export function InfiniteCanvas() {
       }
 
       setDragging(true);
+      hasDraggedRef.current = false; // Reset drag tracking
       lastPointerRef.current = { x: e.clientX, y: e.clientY };
       lastTimeRef.current = performance.now();
       velocityRef.current = { x: 0, y: 0 };
@@ -208,6 +212,11 @@ export function InfiniteCanvas() {
 
       const deltaX = e.clientX - lastPointerRef.current.x;
       const deltaY = e.clientY - lastPointerRef.current.y;
+
+      // Mark as dragged if movement exceeds threshold (5px)
+      if (Math.abs(deltaX) > 5 || Math.abs(deltaY) > 5) {
+        hasDraggedRef.current = true;
+      }
 
       if (dt > 0) {
         velocityRef.current = {
@@ -261,14 +270,14 @@ export function InfiniteCanvas() {
     [pan]
   );
 
-  // Handle card click
+  // Handle card click - only open if no actual dragging occurred
   const handleCardClick = useCallback(
     (itemId: string) => {
-      if (!isDragging) {
+      if (!hasDraggedRef.current) {
         setSelectedItem(itemId);
       }
     },
-    [isDragging, setSelectedItem]
+    [setSelectedItem]
   );
 
   // Cleanup on unmount
@@ -283,6 +292,7 @@ export function InfiniteCanvas() {
     };
   }, []);
 
+
   return (
     <div
       ref={containerRef}
@@ -296,7 +306,7 @@ export function InfiniteCanvas() {
       onPointerLeave={handlePointerUp}
       onWheel={handleWheel}
       role="application"
-      aria-label="Infinite canvas - drag to pan"
+      aria-label={isTouch ? "Infinite canvas - swipe to explore" : "Infinite canvas - drag to pan"}
     >
       {/* Canvas layer */}
       <div
@@ -335,6 +345,7 @@ export function InfiniteCanvas() {
           background: "radial-gradient(ellipse at center, transparent 0%, rgba(0,0,0,0.3) 100%)",
         }}
       />
+
     </div>
   );
 }

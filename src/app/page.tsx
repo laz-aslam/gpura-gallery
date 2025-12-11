@@ -5,16 +5,19 @@ import { FilterBar } from "@/components/FilterBar";
 import { ItemDrawer } from "@/components/ItemDrawer";
 import { DocumentViewer } from "@/components/DocumentViewer";
 import { InfoButton } from "@/components/InfoButton";
+import { useDeviceType } from "@/hooks/useDeviceType";
 import { siteConfig } from "@/config/site";
 
 export default function Home() {
+  const { isTouch } = useDeviceType();
+
   return (
     <main className="h-screen w-screen overflow-hidden relative">
       {/* Full-screen infinite canvas */}
       <InfiniteCanvas />
 
-      {/* Floating header */}
-      <header className="fixed top-0 left-0 right-0 z-30 p-4 flex items-center justify-between pointer-events-none">
+      {/* Desktop header - hidden on mobile */}
+      <header className="fixed top-0 left-0 right-0 z-30 p-4 hidden md:flex items-center justify-between pointer-events-none">
         {/* Logo */}
         <a
           href={siteConfig.links.classicSite}
@@ -29,7 +32,7 @@ export default function Home() {
           />
         </a>
 
-        {/* Center filters */}
+        {/* Center filters - desktop only */}
         <div className="pointer-events-auto">
           <FilterBar />
         </div>
@@ -69,8 +72,52 @@ export default function Home() {
         </div>
       </header>
 
-      {/* Floating bottom hint */}
-      <div className="fixed bottom-4 left-4 z-20 pointer-events-none">
+      {/* Mobile header - logo + gpura.org link */}
+      <header className="fixed top-4 left-0 right-0 z-30 px-4 flex md:hidden items-center justify-between safe-area-inset pointer-events-none">
+        <a
+          href={siteConfig.links.classicSite}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="pointer-events-auto flex items-center h-8 hover:opacity-80 transition-opacity active:scale-95"
+        >
+          <img
+            src="/logo.svg"
+            alt="Granthapura"
+            className="h-7"
+          />
+        </a>
+
+        <a
+          href={siteConfig.links.classicSite}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="pointer-events-auto flex items-center justify-center gap-1.5 h-8 px-3 rounded-full text-xs font-medium transition-all active:scale-95"
+          style={{
+            background: "rgba(255,255,255,0.05)",
+            border: "1px solid rgba(255,255,255,0.08)",
+            backdropFilter: "blur(20px)",
+          }}
+        >
+          gpura.org
+          <svg
+            className="w-3 h-3"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+            style={{ opacity: 0.6 }}
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+            />
+          </svg>
+        </a>
+      </header>
+
+      {/* Floating bottom hint - desktop only */}
+      <div className="fixed bottom-4 left-4 z-20 pointer-events-none hidden md:block">
         <p className="text-[11px]" style={{ color: "rgba(255,255,255,0.3)" }}>
           Drag to explore · Scroll to pan
         </p>

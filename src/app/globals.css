@@ -33,12 +33,28 @@ html, body {
   overflow: hidden;
   height: 100%;
   width: 100%;
+  /* Prevent pull-to-refresh on mobile */
+  overscroll-behavior: none;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  /* Prevent text selection during drag on mobile */
+  -webkit-user-select: none;
+  user-select: none;
+  /* Smooth scrolling */
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Safe area insets for notched devices */
+.safe-area-inset {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+.safe-area-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 /* Hide scrollbars */
@@ -51,32 +67,70 @@ body {
   display: none;
 }
 
-/* Canvas cursor */
-.canvas-grab {
-  cursor: grab;
-}
+/* Canvas cursor - desktop only */
+@media (pointer: fine) {
+  .canvas-grab {
+    cursor: grab;
+  }
 
-.canvas-grab:active,
-.canvas-grabbing {
-  cursor: grabbing;
+  .canvas-grab:active,
+  .canvas-grabbing {
+    cursor: grabbing;
+  }
 }
 
 /* Card styles */
 .canvas-card {
   position: absolute;
-  border-radius: 4px;
+  border-radius: 6px;
   overflow: hidden;
   background: var(--card);
   transition: transform 0.15s ease-out, box-shadow 0.15s ease-out;
   cursor: pointer;
   will-change: transform;
   backface-visibility: hidden;
+  /* Better touch handling */
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 
-.canvas-card:hover {
-  transform: scale(1.05) !important;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
-  z-index: 100;
+/* Desktop hover effect */
+@media (pointer: fine) {
+  .canvas-card:hover {
+    transform: scale(1.05) !important;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    z-index: 100;
+  }
+
+  .canvas-card:hover .card-overlay {
+    opacity: 1;
+  }
+}
+
+/* Touch device - active state and always-visible overlay */
+@media (pointer: coarse) {
+  .canvas-card {
+    /* Slightly larger border radius for touch */
+    border-radius: 8px;
+  }
+
+  .canvas-card:active {
+    transform: scale(0.95) !important;
+    transition: transform 0.1s ease-out;
+  }
+
+  /* Always show title overlay on touch devices */
+  .canvas-card .card-overlay {
+    opacity: 1;
+    background: linear-gradient(to top, rgba(0,0,0,0.75) 0%, rgba(0,0,0,0.3) 40%, transparent 70%);
+    padding: 16px 12px 12px;
+  }
+
+  /* Larger touch targets on mobile */
+  .canvas-card {
+    min-width: 100px;
+    min-height: 120px;
+  }
 }
 
 .canvas-card img {
@@ -84,6 +138,10 @@ body {
   height: 100%;
   object-fit: cover;
   display: block;
+  /* Prevent image dragging */
+  -webkit-user-drag: none;
+  user-select: none;
+  pointer-events: none;
 }
 
 /* Shimmer animation for loading */
@@ -96,7 +154,7 @@ body {
   }
 }
 
-/* Card overlay on hover */
+/* Card overlay */
 .canvas-card .card-overlay {
   position: absolute;
   inset: 0;
@@ -107,10 +165,6 @@ body {
   flex-direction: column;
   justify-content: flex-end;
   padding: 12px;
-}
-
-.canvas-card:hover .card-overlay {
-  opacity: 1;
 }
 
 /* Search input */
@@ -148,6 +202,15 @@ body {
   }
 }
 
+@keyframes slideInFromBottom {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
 @keyframes fadeIn {
   from {
     opacity: 0;
@@ -161,14 +224,23 @@ body {
   animation: slideIn 0.3s ease-out;
 }
 
+/* Mobile drawer slides from bottom */
+@media (max-width: 767px) {
+  .drawer-animate {
+    animation: slideInFromBottom 0.3s ease-out;
+  }
+}
+
 .backdrop-animate {
   animation: fadeIn 0.2s ease-out;
 }
 
-/* Selection */
-::selection {
-  background: var(--foreground);
-  color: var(--background);
+/* Selection - desktop only */
+@media (pointer: fine) {
+  ::selection {
+    background: var(--foreground);
+    color: var(--background);
+  }
 }
 
 /* Focus visible */
@@ -189,14 +261,22 @@ body {
 .year-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 16px;
-  height: 16px;
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
   background: white;
   cursor: pointer;
   pointer-events: auto;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+/* Larger thumb on touch devices */
+@media (pointer: coarse) {
+  .year-slider::-webkit-slider-thumb {
+    width: 24px;
+    height: 24px;
+  }
 }
 
 .year-slider::-webkit-slider-thumb:hover {
@@ -209,15 +289,22 @@ body {
 }
 
 .year-slider::-moz-range-thumb {
-  width: 16px;
-  height: 16px;
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
   background: white;
   cursor: pointer;
   pointer-events: auto;
   border: none;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+@media (pointer: coarse) {
+  .year-slider::-moz-range-thumb {
+    width: 24px;
+    height: 24px;
+  }
 }
 
 .year-slider::-moz-range-thumb:hover {
@@ -231,4 +318,141 @@ body {
 
 .year-slider:focus-visible {
   outline: none;
+}
+
+/* Mobile-specific utilities */
+@media (max-width: 767px) {
+  /* Ensure touch targets are at least 44px */
+  button, a {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  /* Exception for inline elements */
+  .inline-touch-target {
+    min-height: auto;
+    min-width: auto;
+  }
+}
+
+/* Prevent iOS zoom on input focus */
+@media screen and (max-width: 767px) {
+  input[type="text"],
+  input[type="search"],
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}
+
+/* Vaul drawer customizations */
+[vaul-drawer] {
+  touch-action: none;
+}
+
+[vaul-drawer-overlay] {
+  background: rgba(0, 0, 0, 0.6) !important;
+}
+
+/* Smooth momentum scrolling in drawers */
+.drawer-scroll {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+/* Loading pulse animation */
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.animate-pulse {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Swipe indicator animation */
+@keyframes swipeHint {
+  0%, 100% {
+    transform: translateX(0);
+  }
+  50% {
+    transform: translateX(10px);
+  }
+}
+
+.swipe-hint {
+  animation: swipeHint 1.5s ease-in-out infinite;
+}
+
+/* Fade in and out animation for hints */
+@keyframes fadeInOut {
+  0% {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  15% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  85% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+}
+
+.animate-fade-in-out {
+  animation: fadeInOut 3s ease-in-out forwards;
+}
+
+/* Touch ripple effect */
+@keyframes touchRipple {
+  0% {
+    transform: scale(0);
+    opacity: 0.5;
+  }
+  100% {
+    transform: scale(2);
+    opacity: 0;
+  }
+}
+
+.touch-ripple {
+  animation: touchRipple 0.4s ease-out forwards;
+}
+
+/* Bounce animation for call to action */
+@keyframes gentleBounce {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
+}
+
+.animate-gentle-bounce {
+  animation: gentleBounce 2s ease-in-out infinite;
+}
+
+/* Mobile navigation spring animation */
+@media (max-width: 767px) {
+  .nav-button:active {
+    transform: scale(0.92);
+    transition: transform 0.1s ease-out;
+  }
+}
+
+/* Improve tap highlight on mobile */
+@media (pointer: coarse) {
+  * {
+    -webkit-tap-highlight-color: rgba(255, 255, 255, 0.1);
+  }
 }

@@ -8,38 +8,53 @@ export function InfoButton() {
   const popupRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
 
-  // Close popup when clicking outside
+  // Block all pointer events when popup is open (using capture phase)
   useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (
-        popupRef.current &&
-        buttonRef.current &&
-        !popupRef.current.contains(event.target as Node) &&
-        !buttonRef.current.contains(event.target as Node)
-      ) {
-        setIsOpen(false);
-      }
-    }
+    if (!isOpen) return;
 
-    if (isOpen) {
-      document.addEventListener("mousedown", handleClickOutside);
-      return () => document.removeEventListener("mousedown", handleClickOutside);
-    }
+    const handlePointerDown = (e: PointerEvent) => {
+      // If clicking on popup or button, allow it
+      if (
+        popupRef.current?.contains(e.target as Node) ||
+        buttonRef.current?.contains(e.target as Node)
+      ) {
+        return;
+      }
+      // Otherwise block and close
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      setIsOpen(false);
+    };
+
+    // Use capture phase to intercept before canvas gets the event
+    document.addEventListener("pointerdown", handlePointerDown, true);
+    return () => document.removeEventListener("pointerdown", handlePointerDown, true);
   }, [isOpen]);
 
   return (
-    <div className="fixed bottom-4 right-4 z-30">
-      {/* Popup */}
+    <>
+      {/* Invisible backdrop to block card interactions */}
       {isOpen && (
         <div
-          ref={popupRef}
-          className="absolute bottom-12 right-0 w-80 p-4 rounded-lg backdrop-animate"
-          style={{
-            background: "rgba(20, 20, 20, 0.95)",
-            border: "1px solid rgba(255, 255, 255, 0.1)",
-            boxShadow: "0 8px 32px rgba(0, 0, 0, 0.4)",
-          }}
-        >
+          className="fixed inset-0"
+          style={{ zIndex: 29 }}
+          aria-hidden="true"
+        />
+      )}
+
+      <div className="fixed bottom-4 right-4 z-30">
+        {/* Popup */}
+        {isOpen && (
+          <div
+            ref={popupRef}
+            className="absolute bottom-12 right-0 w-80 p-4 rounded-lg backdrop-animate"
+            style={{
+              background: "rgba(20, 20, 20, 0.95)",
+              border: "1px solid rgba(255, 255, 255, 0.1)",
+              boxShadow: "0 8px 32px rgba(0, 0, 0, 0.4)",
+            }}
+          >
           <p className="text-xs leading-relaxed mb-3" style={{ color: "rgba(255, 255, 255, 0.7)" }}>
             കേരളവുമായി ബന്ധപ്പെട്ട്, എല്ലാ ഭാഷകളിലും ലിപികളിലും ഉള്ള കൈയെഴുത്ത് രേഖകൾ, അച്ചടി പുസ്തകങ്ങൾ, ചിത്രങ്ങൾ, ഓഡിയോ, വീഡിയോ തുടങ്ങിയവ ശേഖരിച്ച് ഡിജിറ്റൈസ് ചെയ്ത് പൊതുവായി പങ്കുവെക്കുന്ന പദ്ധതി.
           </p>
@@ -137,5 +152,6 @@ export function InfoButton() {
         </svg>
       </button>
     </div>
+    </>
   );
 }
