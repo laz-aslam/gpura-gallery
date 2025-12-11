@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
+import { useDrag } from "@use-gesture/react";
 import { useViewerStore } from "@/store/viewer-store";
+import { useDeviceType } from "@/hooks/useDeviceType";
 import type { IIIFPage } from "@/lib/types";
 
 /**
@@ -148,8 +150,12 @@ export function DocumentViewer() {
     setError,
   } = useViewerStore();
 
+  const { isMobile, isTouch } = useDeviceType();
   const [imageLoading, setImageLoading] = useState(true);
   const [pdfLoading, setPdfLoading] = useState(true);
+  const [swipeOffset, setSwipeOffset] = useState(0);
+  const [isSwipingPage, setIsSwipingPage] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   const currentPage = pages[currentIndex];
   const hasMultiple = pages.length > 1;
@@ -158,6 +164,36 @@ export function DocumentViewer() {
 
   const isPdf = documentSource?.type === "pdf";
   const isIiif = documentSource?.type === "iiif";
+
+  // Swipe gesture for page navigation (touch devices)
+  const bind = useDrag(
+    ({ active, movement: [mx], velocity: [vx], direction: [dx], cancel }) => {
+      if (!isIiif || !hasMultiple || loading) return;
+
+      if (active) {
+        setIsSwipingPage(true);
+        // Limit swipe based on available pages
+        const limitedMx = !hasPrev && mx > 0 ? mx * 0.3 : !hasNext && mx < 0 ? mx * 0.3 : mx;
+        setSwipeOffset(limitedMx);
+      } else {
+        setIsSwipingPage(false);
+        const threshold = 80;
+        const velocityThreshold = 0.3;
+
+        if ((mx < -threshold || (vx > velocityThreshold && dx < 0)) && hasNext) {
+          nextPage();
+        } else if ((mx > threshold || (vx > velocityThreshold && dx > 0)) && hasPrev) {
+          prevPage();
+        }
+        setSwipeOffset(0);
+      }
+    },
+    {
+      axis: "x",
+      filterTaps: true,
+      pointer: { touch: true },
+    }
+  );
 
   // Fetch and parse IIIF manifest via proxy to avoid CORS
   useEffect(() => {
@@ -245,17 +281,19 @@ export function DocumentViewer() {
   if (!isOpen || !documentSource) return null;
 
   return (
-    <div className="fixed inset-0 z-100 flex flex-col" style={{ background: "#0a0a0a" }}>
+    <div className="fixed inset-0 z-[100] flex flex-col" style={{ background: "#0a0a0a" }}>
       {/* Header */}
       <header
-        className="flex items-center justify-between px-4 py-3 border-b shrink-0"
+        className={`flex items-center justify-between border-b shrink-0 ${
+          isMobile ? "px-3 py-2 safe-area-inset" : "px-4 py-3"
+        }`}
         style={{ borderColor: "rgba(255,255,255,0.1)" }}
       >
         {/* Title and page info */}
-        <div className="flex items-center gap-4 min-w-0">
+        <div className="flex items-center gap-2 md:gap-4 min-w-0 flex-1">
           <button
             onClick={closeViewer}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors hover:bg-white/10"
+            className="flex items-center gap-1 md:gap-2 px-2 md:px-3 py-1.5 rounded-lg transition-colors hover:bg-white/10 active:scale-95"
             aria-label="Close viewer"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -264,32 +302,32 @@ export function DocumentViewer() {
             <span className="text-sm hidden sm:block">Back</span>
           </button>
           
-          <div className="min-w-0">
-            <h1 className="text-sm font-medium truncate max-w-[200px] sm:max-w-md">
+          <div className="min-w-0 flex-1">
+            <h1 className={`font-medium truncate ${isMobile ? "text-xs max-w-[150px]" : "text-sm max-w-md"}`}>
               {title}
             </h1>
             {isIiif && pages.length > 0 && (
               <p className="text-xs" style={{ color: "#666" }}>
-                Page {currentIndex + 1} of {pages.length}
+                {currentIndex + 1} / {pages.length}
               </p>
             )}
             {isPdf && (
               <p className="text-xs" style={{ color: "#666" }}>
-                PDF Document
+                PDF
               </p>
             )}
           </div>
         </div>
 
         {/* Actions */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1 md:gap-2">
           {/* Open on gpura.org */}
           {sourceUrl && (
             <a
               href={sourceUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm transition-colors hover:bg-white/10"
+              className="flex items-center gap-1 md:gap-2 px-2 md:px-3 py-1.5 rounded-lg text-sm transition-colors hover:bg-white/10 active:scale-95"
               style={{ color: "#999" }}
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -300,14 +338,14 @@ export function DocumentViewer() {
                   d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
                 />
               </svg>
-              <span className="hidden sm:block">Open in gpura.org</span>
+              <span className="hidden md:block">gpura.org</span>
             </a>
           )}
         </div>
       </header>
 
       {/* Main content area */}
-      <div className="flex-1 relative overflow-hidden">
+      <div ref={containerRef} className="flex-1 relative overflow-hidden" {...(isTouch && isIiif ? bind() : {})}>
         {/* Loading state for IIIF manifest */}
         {loading && isIiif && (
           <div className="absolute inset-0 flex items-center justify-center z-10" style={{ background: "#0a0a0a" }}>
@@ -344,7 +382,7 @@ export function DocumentViewer() {
               </div>
               <button
                 onClick={closeViewer}
-                className="px-4 py-2 rounded-full text-sm font-medium transition-all hover:scale-105"
+                className="px-4 py-2 rounded-full text-sm font-medium transition-all active:scale-95"
                 style={{ background: "white", color: "black" }}
               >
                 Go Back
@@ -379,9 +417,15 @@ export function DocumentViewer() {
           </>
         )}
 
-        {/* IIIF Page image */}
+        {/* IIIF Page image with swipe support */}
         {isIiif && currentPage && !loading && !error && (
-          <div className="w-full h-full flex items-center justify-center p-4 overflow-auto">
+          <div
+            className="w-full h-full flex items-center justify-center p-2 md:p-4 overflow-auto"
+            style={{
+              transform: `translateX(${swipeOffset}px)`,
+              transition: isSwipingPage ? "none" : "transform 0.2s ease-out",
+            }}
+          >
             {/* Image loading spinner */}
             {imageLoading && (
               <div className="absolute inset-0 flex items-center justify-center">
@@ -408,20 +452,20 @@ export function DocumentViewer() {
           </div>
         )}
 
-        {/* Navigation arrows for multiple IIIF pages */}
-        {isIiif && hasMultiple && !loading && !error && (
+        {/* Navigation arrows - desktop only or tablet in landscape */}
+        {isIiif && hasMultiple && !loading && !error && !isMobile && (
           <>
             {/* Previous */}
             <button
               onClick={prevPage}
               disabled={!hasPrev}
-              className={`absolute left-4 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full flex items-center justify-center transition-all ${
-                hasPrev ? "hover:bg-white/20 hover:scale-110" : "opacity-30 cursor-not-allowed"
+              className={`absolute left-2 md:left-4 top-1/2 -translate-y-1/2 w-10 h-10 md:w-12 md:h-12 rounded-full flex items-center justify-center transition-all ${
+                hasPrev ? "hover:bg-white/20 hover:scale-110 active:scale-95" : "opacity-30 cursor-not-allowed"
               }`}
               style={{ background: "rgba(0,0,0,0.5)" }}
               aria-label="Previous page"
             >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-5 h-5 md:w-6 md:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
             </button>
@@ -430,69 +474,136 @@ export function DocumentViewer() {
             <button
               onClick={nextPage}
               disabled={!hasNext}
-              className={`absolute right-4 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full flex items-center justify-center transition-all ${
-                hasNext ? "hover:bg-white/20 hover:scale-110" : "opacity-30 cursor-not-allowed"
+              className={`absolute right-2 md:right-4 top-1/2 -translate-y-1/2 w-10 h-10 md:w-12 md:h-12 rounded-full flex items-center justify-center transition-all ${
+                hasNext ? "hover:bg-white/20 hover:scale-110 active:scale-95" : "opacity-30 cursor-not-allowed"
               }`}
               style={{ background: "rgba(0,0,0,0.5)" }}
               aria-label="Next page"
             >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-5 h-5 md:w-6 md:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
               </svg>
             </button>
           </>
         )}
+
+
+        {/* Edge tap zones for mobile page navigation */}
+        {isTouch && isIiif && hasMultiple && !loading && !error && (
+          <>
+            {/* Left tap zone */}
+            {hasPrev && (
+              <button
+                onClick={prevPage}
+                className="absolute left-0 top-0 bottom-0 w-16 md:hidden"
+                style={{ background: "transparent" }}
+                aria-label="Previous page"
+              />
+            )}
+            {/* Right tap zone */}
+            {hasNext && (
+              <button
+                onClick={nextPage}
+                className="absolute right-0 top-0 bottom-0 w-16 md:hidden"
+                style={{ background: "transparent" }}
+                aria-label="Next page"
+              />
+            )}
+          </>
+        )}
       </div>
 
-      {/* Bottom navigation bar for IIIF */}
+      {/* Bottom navigation bar for IIIF - redesigned for mobile */}
       {isIiif && pages.length > 0 && !loading && !error && (
         <div
-          className="flex items-center justify-center gap-4 px-4 py-3 border-t shrink-0"
+          className={`flex items-center justify-center border-t shrink-0 ${
+            isMobile ? "gap-2 px-3 py-2 safe-area-bottom" : "gap-4 px-4 py-3"
+          }`}
           style={{ borderColor: "rgba(255,255,255,0.1)" }}
         >
-          <button
-            onClick={prevPage}
-            disabled={!hasPrev}
-            className={`px-4 py-2 rounded-lg text-sm transition-colors ${
-              hasPrev ? "hover:bg-white/10" : "opacity-30 cursor-not-allowed"
-            }`}
-          >
-            Previous
-          </button>
-          
-          {/* Page input for quick navigation */}
-          <div className="flex items-center gap-2">
-            <input
-              type="text"
-              inputMode="numeric"
-              pattern="[0-9]*"
-              value={currentIndex + 1}
-              onChange={(e) => {
-                const page = parseInt(e.target.value, 10);
-                if (page >= 1 && page <= pages.length) {
-                  useViewerStore.getState().goToPage(page - 1);
-                }
-              }}
-              className="w-16 px-2 py-1 rounded text-center text-sm tabular-nums"
-              style={{
-                background: "rgba(255,255,255,0.1)",
-                border: "1px solid rgba(255,255,255,0.1)",
-              }}
-            />
-            <span className="text-sm" style={{ color: "#666" }}>
-              / {pages.length}
-            </span>
-          </div>
-          
-          <button
-            onClick={nextPage}
-            disabled={!hasNext}
-            className={`px-4 py-2 rounded-lg text-sm transition-colors ${
-              hasNext ? "hover:bg-white/10" : "opacity-30 cursor-not-allowed"
-            }`}
-          >
-            Next
-          </button>
+          {/* Compact navigation for mobile */}
+          {isMobile ? (
+            <>
+              <button
+                onClick={prevPage}
+                disabled={!hasPrev}
+                className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${
+                  hasPrev ? "active:scale-95" : "opacity-30"
+                }`}
+                style={{ background: hasPrev ? "rgba(255,255,255,0.1)" : "transparent" }}
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
+
+              {/* Page indicator */}
+              <div className="flex items-center gap-2 px-3">
+                <span className="text-sm font-medium tabular-nums">{currentIndex + 1}</span>
+                <span className="text-sm" style={{ color: "#666" }}>/</span>
+                <span className="text-sm tabular-nums" style={{ color: "#666" }}>{pages.length}</span>
+              </div>
+
+              <button
+                onClick={nextPage}
+                disabled={!hasNext}
+                className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${
+                  hasNext ? "active:scale-95" : "opacity-30"
+                }`}
+                style={{ background: hasNext ? "rgba(255,255,255,0.1)" : "transparent" }}
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                onClick={prevPage}
+                disabled={!hasPrev}
+                className={`px-4 py-2 rounded-lg text-sm transition-colors ${
+                  hasPrev ? "hover:bg-white/10" : "opacity-30 cursor-not-allowed"
+                }`}
+              >
+                Previous
+              </button>
+              
+              {/* Page input for quick navigation */}
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  value={currentIndex + 1}
+                  onChange={(e) => {
+                    const page = parseInt(e.target.value, 10);
+                    if (page >= 1 && page <= pages.length) {
+                      useViewerStore.getState().goToPage(page - 1);
+                    }
+                  }}
+                  className="w-16 px-2 py-1 rounded text-center text-sm tabular-nums"
+                  style={{
+                    background: "rgba(255,255,255,0.1)",
+                    border: "1px solid rgba(255,255,255,0.1)",
+                  }}
+                />
+                <span className="text-sm" style={{ color: "#666" }}>
+                  / {pages.length}
+                </span>
+              </div>
+              
+              <button
+                onClick={nextPage}
+                disabled={!hasNext}
+                className={`px-4 py-2 rounded-lg text-sm transition-colors ${
+                  hasNext ? "hover:bg-white/10" : "opacity-30 cursor-not-allowed"
+                }`}
+              >
+                Next
+              </button>
+            </>
+          )}
         </div>
       )}
     </div>
