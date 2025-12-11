@@ -509,25 +509,32 @@ export function FilterBar() {
           </>
         )}
 
-        {/* Loading indicator */}
-        {(tilesLoading || search.loading) && (
-          <>
-            <div className="w-px h-4 bg-white/10 flex-shrink-0" />
-            <div className="flex items-center gap-1.5 flex-shrink-0">
-              <div
-                className="w-3 h-3 rounded-full border-2 animate-spin"
-                style={{
-                  borderColor: "rgba(255,255,255,0.2)",
-                  borderTopColor: "white",
-                }}
-              />
-              <span className="text-xs" style={{ color: "rgba(255,255,255,0.6)" }}>
-                {search.loading ? "Searching..." : "Loading..."}
-              </span>
-            </div>
-          </>
-        )}
       </div>
+
+      {/* Loading indicator - positioned outside flex flow to prevent layout shift */}
+      {(tilesLoading || search.loading) && (
+        <div 
+          className="absolute right-0 top-1/2 flex items-center gap-1.5 px-3 py-1.5 rounded-full"
+          style={{
+            transform: "translateX(calc(100% + 8px)) translateY(-50%)",
+            background: "rgba(255,255,255,0.05)",
+            border: "1px solid rgba(255,255,255,0.08)",
+            backdropFilter: "blur(20px)",
+            WebkitBackdropFilter: "blur(20px)",
+          }}
+        >
+          <div
+            className="w-3 h-3 rounded-full border-2 animate-spin"
+            style={{
+              borderColor: "rgba(255,255,255,0.2)",
+              borderTopColor: "white",
+            }}
+          />
+          <span className="text-xs" style={{ color: "rgba(255,255,255,0.6)" }}>
+            {search.loading ? "Searching..." : "Loading..."}
+          </span>
+        </div>
+      )}
 
     </div>
   );
