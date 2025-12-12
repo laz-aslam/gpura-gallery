@@ -37,3 +37,4 @@ export async function getDataAdapter(): Promise<DataAdapter> {
   return new OmekaAdapter();
 }
 
+
