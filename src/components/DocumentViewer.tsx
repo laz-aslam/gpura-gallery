@@ -6,6 +6,24 @@ import { useViewerStore } from "@/store/viewer-store";
 import { useDeviceType } from "@/hooks/useDeviceType";
 import type { IIIFPage } from "@/lib/types";
 
+import dynamic from "next/dynamic";
+
+// Dynamic import to avoid SSR issues with react-pdf
+const PdfViewer = dynamic(
+  () => import("./PdfViewer").then((mod) => mod.PdfViewer),
+  { 
+    ssr: false,
+    loading: () => (
+      <div className="absolute inset-0 flex items-center justify-center" style={{ background: "#0a0a0a" }}>
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 rounded-full border-2 animate-spin" style={{ borderColor: "rgba(255,255,255,0.1)", borderTopColor: "white" }} />
+          <p className="text-sm" style={{ color: "#666" }}>Loading viewer...</p>
+        </div>
+      </div>
+    )
+  }
+);
+
 /**
  * Parse IIIF 3.0 manifest to extract pages
  */
@@ -155,7 +173,6 @@ export function DocumentViewer() {
   const { isMobile, isTouch } = useDeviceType();
   const [imageLoading, setImageLoading] = useState(true);
   const [secondImageLoading, setSecondImageLoading] = useState(true);
-  const [pdfLoading, setPdfLoading] = useState(true);
   const [swipeOffset, setSwipeOffset] = useState(0);
   const [isSwipingPage, setIsSwipingPage] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -233,7 +250,7 @@ export function DocumentViewer() {
     fetchManifest();
   }, [isOpen, documentSource, setPages, setError]);
 
-  // Keyboard navigation
+  // Keyboard navigation (PDF has its own keyboard handling in PdfViewer)
   useEffect(() => {
     if (!isOpen) return;
 
@@ -243,10 +260,10 @@ export function DocumentViewer() {
           closeViewer();
           break;
         case "ArrowLeft":
-          if (hasPrev && isIiif) prevPage();
+          if (isIiif && hasPrev) prevPage();
           break;
         case "ArrowRight":
-          if (hasNext && isIiif) nextPage();
+          if (isIiif && hasNext) nextPage();
           break;
       }
     };
@@ -289,10 +306,6 @@ export function DocumentViewer() {
     setSecondImageLoading(false);
   }, []);
 
-  const handlePdfLoad = useCallback(() => {
-    setPdfLoading(false);
-  }, []);
-
   if (!isOpen || !documentSource) return null;
 
   return (
@@ -330,7 +343,7 @@ export function DocumentViewer() {
             )}
             {isPdf && (
               <p className="text-xs" style={{ color: "#666" }}>
-                PDF
+                PDF Document
               </p>
             )}
           </div>
@@ -408,30 +421,14 @@ export function DocumentViewer() {
           </div>
         )}
 
-        {/* PDF Viewer - using Google Docs Viewer for online viewing */}
+        {/* PDF Viewer - custom viewer with page/book modes like IIIF */}
         {isPdf && !error && (
-          <>
-            {pdfLoading && (
-              <div className="absolute inset-0 flex items-center justify-center z-10" style={{ background: "#0a0a0a" }}>
-                <div className="flex flex-col items-center gap-3">
-                  <div
-                    className="w-8 h-8 rounded-full border-2 animate-spin"
-                    style={{
-                      borderColor: "rgba(255,255,255,0.1)",
-                      borderTopColor: "white",
-                    }}
-                  />
-                  <p className="text-sm" style={{ color: "#666" }}>Loading PDF...</p>
-                </div>
-              </div>
-            )}
-            <iframe
-              src={`https://docs.google.com/viewer?url=${encodeURIComponent(documentSource.url)}&embedded=true`}
-              className="w-full h-full border-0"
-              title={title}
-              onLoad={handlePdfLoad}
-            />
-          </>
+          <PdfViewer
+            url={documentSource.url}
+            isMobile={isMobile}
+            isTouch={isTouch}
+            sourceUrl={sourceUrl}
+          />
         )}
 
         {/* IIIF Page image with swipe support */}
@@ -683,6 +680,7 @@ export function DocumentViewer() {
           )}
         </div>
       )}
+
     </div>
   );
 }
