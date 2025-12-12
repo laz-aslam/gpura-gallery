@@ -3,6 +3,8 @@
 import { create } from "zustand";
 import type { IIIFPage, DocumentSource } from "@/lib/types";
 
+export type ViewMode = "single" | "double";
+
 interface ViewerState {
   isOpen: boolean;
   documentSource: DocumentSource | null;
@@ -12,6 +14,7 @@ interface ViewerState {
   currentIndex: number;
   loading: boolean;
   error: string | null;
+  viewMode: ViewMode;
   
   // Actions
   openViewer: (source: DocumentSource, title: string, sourceUrl?: string) => void;
@@ -22,6 +25,7 @@ interface ViewerState {
   setPages: (pages: IIIFPage[]) => void;
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
+  setViewMode: (mode: ViewMode) => void;
 }
 
 export const useViewerStore = create<ViewerState>((set, get) => ({
@@ -33,6 +37,7 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
   currentIndex: 0,
   loading: false,
   error: null,
+  viewMode: "single",
 
   openViewer: (source, title, sourceUrl) => {
     set({
@@ -61,16 +66,20 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
   },
 
   nextPage: () => {
-    const { currentIndex, pages } = get();
-    if (currentIndex < pages.length - 1) {
-      set({ currentIndex: currentIndex + 1 });
+    const { currentIndex, pages, viewMode } = get();
+    const step = viewMode === "double" ? 2 : 1;
+    const newIndex = Math.min(currentIndex + step, pages.length - 1);
+    if (newIndex !== currentIndex) {
+      set({ currentIndex: newIndex });
     }
   },
 
   prevPage: () => {
-    const { currentIndex } = get();
-    if (currentIndex > 0) {
-      set({ currentIndex: currentIndex - 1 });
+    const { currentIndex, viewMode } = get();
+    const step = viewMode === "double" ? 2 : 1;
+    const newIndex = Math.max(currentIndex - step, 0);
+    if (newIndex !== currentIndex) {
+      set({ currentIndex: newIndex });
     }
   },
 
@@ -91,5 +100,9 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
 
   setError: (error) => {
     set({ error, loading: false });
+  },
+
+  setViewMode: (mode) => {
+    set({ viewMode: mode });
   },
 }));

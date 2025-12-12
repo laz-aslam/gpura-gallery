@@ -6,6 +6,24 @@ import { useViewerStore } from "@/store/viewer-store";
 import { useDeviceType } from "@/hooks/useDeviceType";
 import type { IIIFPage } from "@/lib/types";
 
+import dynamic from "next/dynamic";
+
+// Dynamic import to avoid SSR issues with react-pdf
+const PdfViewer = dynamic(
+  () => import("./PdfViewer").then((mod) => mod.PdfViewer),
+  { 
+    ssr: false,
+    loading: () => (
+      <div className="absolute inset-0 flex items-center justify-center" style={{ background: "#0a0a0a" }}>
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 rounded-full border-2 animate-spin" style={{ borderColor: "rgba(255,255,255,0.1)", borderTopColor: "white" }} />
+          <p className="text-sm" style={{ color: "#666" }}>Loading viewer...</p>
+        </div>
+      </div>
+    )
+  }
+);
+
 /**
  * Parse IIIF 3.0 manifest to extract pages
  */
@@ -143,24 +161,29 @@ export function DocumentViewer() {
     currentIndex,
     loading,
     error,
+    viewMode,
     closeViewer,
     nextPage,
     prevPage,
     setPages,
     setError,
+    setViewMode,
   } = useViewerStore();
 
   const { isMobile, isTouch } = useDeviceType();
   const [imageLoading, setImageLoading] = useState(true);
-  const [pdfLoading, setPdfLoading] = useState(true);
+  const [secondImageLoading, setSecondImageLoading] = useState(true);
   const [swipeOffset, setSwipeOffset] = useState(0);
   const [isSwipingPage, setIsSwipingPage] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const currentPage = pages[currentIndex];
+  const secondPage = viewMode === "double" && currentIndex + 1 < pages.length ? pages[currentIndex + 1] : null;
   const hasMultiple = pages.length > 1;
   const hasPrev = currentIndex > 0;
-  const hasNext = currentIndex < pages.length - 1;
+  const hasNext = viewMode === "double" 
+    ? currentIndex + 1 < pages.length - 1  // In double mode, check if there's at least one more page after the pair
+    : currentIndex < pages.length - 1;
 
   const isPdf = documentSource?.type === "pdf";
   const isIiif = documentSource?.type === "iiif";
@@ -227,7 +250,7 @@ export function DocumentViewer() {
     fetchManifest();
   }, [isOpen, documentSource, setPages, setError]);
 
-  // Keyboard navigation
+  // Keyboard navigation (PDF has its own keyboard handling in PdfViewer)
   useEffect(() => {
     if (!isOpen) return;
 
@@ -237,10 +260,10 @@ export function DocumentViewer() {
           closeViewer();
           break;
         case "ArrowLeft":
-          if (hasPrev && isIiif) prevPage();
+          if (isIiif && hasPrev) prevPage();
           break;
         case "ArrowRight":
-          if (hasNext && isIiif) nextPage();
+          if (isIiif && hasNext) nextPage();
           break;
       }
     };
@@ -252,6 +275,7 @@ export function DocumentViewer() {
   // Reset image loading state when page changes
   useEffect(() => {
     setImageLoading(true);
+    setSecondImageLoading(true);
   }, [currentIndex]);
 
   // Prevent body scroll when viewer is open
@@ -274,8 +298,12 @@ export function DocumentViewer() {
     setImageLoading(false);
   }, []);
 
-  const handlePdfLoad = useCallback(() => {
-    setPdfLoading(false);
+  const handleSecondImageLoad = useCallback(() => {
+    setSecondImageLoading(false);
+  }, []);
+
+  const handleSecondImageError = useCallback(() => {
+    setSecondImageLoading(false);
   }, []);
 
   if (!isOpen || !documentSource) return null;
@@ -308,12 +336,14 @@ export function DocumentViewer() {
             </h1>
             {isIiif && pages.length > 0 && (
               <p className="text-xs" style={{ color: "#666" }}>
-                {currentIndex + 1} / {pages.length}
+                {viewMode === "double" && !isMobile && secondPage
+                  ? `${currentIndex + 1}-${currentIndex + 2} / ${pages.length}`
+                  : `${currentIndex + 1} / ${pages.length}`}
               </p>
             )}
             {isPdf && (
               <p className="text-xs" style={{ color: "#666" }}>
-                PDF
+                PDF Document
               </p>
             )}
           </div>
@@ -391,43 +421,29 @@ export function DocumentViewer() {
           </div>
         )}
 
-        {/* PDF Viewer - using Google Docs Viewer for online viewing */}
+        {/* PDF Viewer - custom viewer with page/book modes like IIIF */}
         {isPdf && !error && (
-          <>
-            {pdfLoading && (
-              <div className="absolute inset-0 flex items-center justify-center z-10" style={{ background: "#0a0a0a" }}>
-                <div className="flex flex-col items-center gap-3">
-                  <div
-                    className="w-8 h-8 rounded-full border-2 animate-spin"
-                    style={{
-                      borderColor: "rgba(255,255,255,0.1)",
-                      borderTopColor: "white",
-                    }}
-                  />
-                  <p className="text-sm" style={{ color: "#666" }}>Loading PDF...</p>
-                </div>
-              </div>
-            )}
-            <iframe
-              src={`https://docs.google.com/viewer?url=${encodeURIComponent(documentSource.url)}&embedded=true`}
-              className="w-full h-full border-0"
-              title={title}
-              onLoad={handlePdfLoad}
-            />
-          </>
+          <PdfViewer
+            url={documentSource.url}
+            isMobile={isMobile}
+            isTouch={isTouch}
+            sourceUrl={sourceUrl}
+          />
         )}
 
         {/* IIIF Page image with swipe support */}
         {isIiif && currentPage && !loading && !error && (
           <div
-            className="w-full h-full flex items-center justify-center p-2 md:p-4 overflow-auto"
+            className={`w-full h-full flex items-center justify-center p-2 md:p-4 overflow-auto ${
+              viewMode === "double" && !isMobile ? "gap-2 md:gap-4" : ""
+            }`}
             style={{
               transform: `translateX(${swipeOffset}px)`,
               transition: isSwipingPage ? "none" : "transform 0.2s ease-out",
             }}
           >
             {/* Image loading spinner */}
-            {imageLoading && (
+            {(imageLoading || (viewMode === "double" && secondPage && secondImageLoading)) && (
               <div className="absolute inset-0 flex items-center justify-center">
                 <div
                   className="w-6 h-6 rounded-full border-2 animate-spin"
@@ -438,17 +454,34 @@ export function DocumentViewer() {
                 />
               </div>
             )}
+            
+            {/* First/Left page */}
             <img
               key={currentPage.imageUrl}
               src={currentPage.imageUrl}
               alt={currentPage.label || `Page ${currentIndex + 1}`}
-              className={`max-w-full max-h-full object-contain transition-opacity duration-200 ${
+              className={`object-contain transition-opacity duration-200 ${
                 imageLoading ? "opacity-0" : "opacity-100"
-              }`}
+              } ${viewMode === "double" && !isMobile ? "max-w-[48%] max-h-full" : "max-w-full max-h-full"}`}
               onLoad={handleImageLoad}
               onError={handleImageError}
               draggable={false}
             />
+            
+            {/* Second/Right page (only in double mode on desktop) */}
+            {viewMode === "double" && !isMobile && secondPage && (
+              <img
+                key={secondPage.imageUrl}
+                src={secondPage.imageUrl}
+                alt={secondPage.label || `Page ${currentIndex + 2}`}
+                className={`max-w-[48%] max-h-full object-contain transition-opacity duration-200 ${
+                  secondImageLoading ? "opacity-0" : "opacity-100"
+                }`}
+                onLoad={handleSecondImageLoad}
+                onError={handleSecondImageError}
+                draggable={false}
+              />
+            )}
           </div>
         )}
 
@@ -602,10 +635,52 @@ export function DocumentViewer() {
               >
                 Next
               </button>
+              
+              {/* Divider */}
+              <div className="w-px h-6 mx-2" style={{ background: "rgba(255,255,255,0.15)" }} />
+              
+              {/* View mode toggle */}
+              <div
+                className="flex items-center rounded-lg p-0.5"
+                style={{ background: "rgba(255,255,255,0.1)" }}
+              >
+                <button
+                  onClick={() => setViewMode("single")}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm transition-all ${
+                    viewMode === "single"
+                      ? "bg-white/20 text-white"
+                      : "text-white/60 hover:text-white/80"
+                  }`}
+                  title="Page view"
+                >
+                  {/* Single page icon */}
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <rect x="6" y="3" width="12" height="18" rx="1" strokeWidth={1.5} />
+                  </svg>
+                  <span className="hidden lg:inline">Page</span>
+                </button>
+                <button
+                  onClick={() => setViewMode("double")}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm transition-all ${
+                    viewMode === "double"
+                      ? "bg-white/20 text-white"
+                      : "text-white/60 hover:text-white/80"
+                  }`}
+                  title="Book view"
+                >
+                  {/* Book icon */}
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <rect x="2" y="3" width="9" height="18" rx="1" strokeWidth={1.5} />
+                    <rect x="13" y="3" width="9" height="18" rx="1" strokeWidth={1.5} />
+                  </svg>
+                  <span className="hidden lg:inline">Book</span>
+                </button>
+              </div>
             </>
           )}
         </div>
       )}
+
     </div>
   );
 }
