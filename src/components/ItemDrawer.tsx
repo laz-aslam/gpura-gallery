@@ -5,6 +5,7 @@ import { useDrag } from "@use-gesture/react";
 import { useCanvasStore } from "@/store/canvas-store";
 import { useViewerStore } from "@/store/viewer-store";
 import { useDeviceType } from "@/hooks/useDeviceType";
+import { preloadIIIFManifest } from "@/lib/preload";
 import type { ItemDetail } from "@/lib/types";
 
 export function ItemDrawer() {
@@ -124,6 +125,23 @@ export function ItemDrawer() {
 
     fetchItem();
   }, [selectedItemId]);
+
+  // Preload first pages when item with viewable content is loaded
+  useEffect(() => {
+    if (!item?.documentSource) return;
+
+    // Preload IIIF manifest and first 4 pages
+    if (item.documentSource.type === "iiif") {
+      // Small delay to not interfere with drawer animation
+      const timer = setTimeout(() => {
+        preloadIIIFManifest(item.documentSource!.url, 4);
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+    
+    // For PDFs, we can't easily preload pages without loading the whole PDF
+    // The PDF viewer will handle its own preloading
+  }, [item?.documentSource]);
 
   // Close on Escape key
   useEffect(() => {

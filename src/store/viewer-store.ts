@@ -22,6 +22,7 @@ interface ViewerState {
   nextPage: () => void;
   prevPage: () => void;
   goToPage: (index: number) => void;
+  setCurrentIndex: (index: number) => void;
   setPages: (pages: IIIFPage[]) => void;
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
@@ -86,6 +87,12 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
   goToPage: (index) => {
     const { pages } = get();
     if (index >= 0 && index < pages.length) {
+      set({ currentIndex: index });
+    }
+  },
+
+  setCurrentIndex: (index) => {
+    if (index >= 0) {
       set({ currentIndex: index });
     }
   },

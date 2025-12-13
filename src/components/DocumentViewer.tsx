@@ -151,7 +151,11 @@ interface IIIFImage {
   };
 }
 
-export function DocumentViewer() {
+interface DocumentViewerProps {
+  onClose?: () => void;
+}
+
+export function DocumentViewer({ onClose }: DocumentViewerProps = {}) {
   const {
     isOpen,
     documentSource,
@@ -175,7 +179,72 @@ export function DocumentViewer() {
   const [secondImageLoading, setSecondImageLoading] = useState(true);
   const [swipeOffset, setSwipeOffset] = useState(0);
   const [isSwipingPage, setIsSwipingPage] = useState(false);
+  const [showCopied, setShowCopied] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // Handle close with optional custom handler
+  const handleClose = useCallback(() => {
+    closeViewer();
+    onClose?.();
+  }, [closeViewer, onClose]);
+
+  // Copy text to clipboard with fallback for mobile
+  const copyToClipboard = useCallback(async (text: string): Promise<boolean> => {
+    // Try modern clipboard API first
+    if (navigator.clipboard && window.isSecureContext) {
+      try {
+        await navigator.clipboard.writeText(text);
+        return true;
+      } catch {
+        // Fall through to legacy method
+      }
+    }
+    
+    // Legacy fallback using execCommand (works better on some mobile browsers)
+    try {
+      const textArea = document.createElement("textarea");
+      textArea.value = text;
+      textArea.style.position = "fixed";
+      textArea.style.left = "-9999px";
+      textArea.style.top = "-9999px";
+      document.body.appendChild(textArea);
+      textArea.focus();
+      textArea.select();
+      
+      const success = document.execCommand("copy");
+      document.body.removeChild(textArea);
+      return success;
+    } catch {
+      return false;
+    }
+  }, []);
+
+  // Share current page link
+  const handleShare = useCallback(async () => {
+    // Extract item ID from sourceUrl
+    const match = sourceUrl?.match(/\/item\/(\d+)/);
+    const itemId = match?.[1];
+    
+    if (!itemId) return;
+    
+    // Build share URL with optional page parameter
+    const pageParam = currentIndex > 0 ? `?p=${currentIndex + 1}` : "";
+    const shareUrl = `${window.location.origin}/${itemId}${pageParam}`;
+    
+    const success = await copyToClipboard(shareUrl);
+    
+    if (success) {
+      setShowCopied(true);
+      setTimeout(() => setShowCopied(false), 3000);
+    } else if (!isMobile) {
+      // Desktop fallback - show prompt
+      window.prompt("Copy this link:", shareUrl);
+    } else {
+      // Mobile - show toast anyway (user can manually copy if needed)
+      setShowCopied(true);
+      setTimeout(() => setShowCopied(false), 3000);
+    }
+  }, [sourceUrl, currentIndex, isMobile, copyToClipboard]);
 
   const currentPage = pages[currentIndex];
   const secondPage = viewMode === "double" && currentIndex + 1 < pages.length ? pages[currentIndex + 1] : null;
@@ -257,7 +326,7 @@ export function DocumentViewer() {
     const handleKeyDown = (e: KeyboardEvent) => {
       switch (e.key) {
         case "Escape":
-          closeViewer();
+          handleClose();
           break;
         case "ArrowLeft":
           if (isIiif && hasPrev) prevPage();
@@ -270,7 +339,7 @@ export function DocumentViewer() {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, hasPrev, hasNext, isIiif, closeViewer, prevPage, nextPage]);
+  }, [isOpen, hasPrev, hasNext, isIiif, handleClose, prevPage, nextPage]);
 
   // Reset image loading state when page changes
   useEffect(() => {
@@ -320,7 +389,7 @@ export function DocumentViewer() {
         {/* Title and page info */}
         <div className="flex items-center gap-2 md:gap-4 min-w-0 flex-1">
           <button
-            onClick={closeViewer}
+            onClick={handleClose}
             className="flex items-center gap-1 md:gap-2 px-2 md:px-3 py-1.5 rounded-lg transition-colors hover:bg-white/10 active:scale-95"
             aria-label="Close viewer"
           >
@@ -351,6 +420,37 @@ export function DocumentViewer() {
 
         {/* Actions */}
         <div className="flex items-center gap-1 md:gap-2">
+          {/* Copy Link button */}
+          {sourceUrl && (
+            <button
+              onClick={handleShare}
+              className="relative flex items-center gap-1 md:gap-2 px-2 md:px-3 py-1.5 rounded-lg text-sm transition-colors hover:bg-white/10 active:scale-95"
+              style={{ color: showCopied && !isMobile ? "#fff" : "#999" }}
+              aria-label="Copy link"
+            >
+              {/* Mobile: always show link icon */}
+              {isMobile ? (
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                </svg>
+              ) : showCopied ? (
+                <>
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  <span>Link Copied</span>
+                </>
+              ) : (
+                <>
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                  </svg>
+                  <span>Copy Link</span>
+                </>
+              )}
+            </button>
+          )}
+
           {/* Open on gpura.org */}
           {sourceUrl && (
             <a
@@ -411,7 +511,7 @@ export function DocumentViewer() {
                 </p>
               </div>
               <button
-                onClick={closeViewer}
+                onClick={handleClose}
                 className="px-4 py-2 rounded-full text-sm font-medium transition-all active:scale-95"
                 style={{ background: "white", color: "black" }}
               >
@@ -428,6 +528,7 @@ export function DocumentViewer() {
             isMobile={isMobile}
             isTouch={isTouch}
             sourceUrl={sourceUrl}
+            initialPage={currentIndex + 1}
           />
         )}
 
@@ -678,6 +779,24 @@ export function DocumentViewer() {
               </div>
             </>
           )}
+        </div>
+      )}
+
+      {/* Mobile toast for copy confirmation */}
+      {isMobile && showCopied && (
+        <div 
+          className="fixed bottom-24 left-0 right-0 z-[110] flex justify-center pointer-events-none"
+        >
+          <div 
+            className="px-4 py-2.5 rounded-full text-sm font-medium animate-fade-in-up"
+            style={{ 
+              background: "rgba(255,255,255,0.95)",
+              color: "#000",
+              boxShadow: "0 2px 12px rgba(0,0,0,0.15)",
+            }}
+          >
+            Link Copied
+          </div>
         </div>
       )}
 
