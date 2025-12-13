@@ -3,6 +3,7 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { useDrag } from "@use-gesture/react";
 import { Document, Page, pdfjs } from "react-pdf";
+import { useViewerStore } from "@/store/viewer-store";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
 
@@ -16,11 +17,15 @@ interface PdfViewerProps {
   isMobile: boolean;
   isTouch: boolean;
   sourceUrl?: string | null;
+  initialPage?: number;
 }
 
-export function PdfViewer({ url, isMobile, isTouch }: PdfViewerProps) {
+export function PdfViewer({ url, isMobile, isTouch, initialPage = 1 }: PdfViewerProps) {
+  const { setPages, setCurrentIndex, currentIndex } = useViewerStore();
+  // Use store's currentIndex if it's been set (from URL param), otherwise use initialPage prop
+  const startPage = currentIndex > 0 ? currentIndex + 1 : initialPage;
   const [numPages, setNumPages] = useState<number | null>(null);
-  const [currentPage, setCurrentPage] = useState(1);
+  const [currentPage, setCurrentPage] = useState(startPage);
   const [loading, setLoading] = useState(true);
   const [pageLoading, setPageLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -134,12 +139,33 @@ export function PdfViewer({ url, isMobile, isTouch }: PdfViewerProps) {
     }
   );
 
+  // Sync current page to viewer store (for share button)
+  useEffect(() => {
+    // Update store's currentIndex (0-indexed) when page changes
+    setCurrentIndex(currentPage - 1);
+  }, [currentPage, setCurrentIndex]);
+
   // PDF load handlers
   const onDocumentLoadSuccess = useCallback(({ numPages: pages }: { numPages: number }) => {
     setNumPages(pages);
     setLoading(false);
     setError(null);
-  }, []);
+    
+    // Create placeholder pages for the store (for share functionality)
+    const placeholderPages = Array.from({ length: pages }, (_, i) => ({
+      id: String(i + 1),
+      label: `Page ${i + 1}`,
+      imageUrl: "",
+      width: 1,
+      height: 1,
+    }));
+    setPages(placeholderPages);
+    
+    // Navigate to initial page if specified
+    if (initialPage > 1 && initialPage <= pages) {
+      setCurrentPage(initialPage);
+    }
+  }, [setPages, initialPage]);
 
   const onDocumentLoadError = useCallback((err: Error) => {
     console.error("PDF load error:", err);
@@ -217,44 +243,61 @@ export function PdfViewer({ url, isMobile, isTouch }: PdfViewerProps) {
               transition: isSwiping ? "none" : "transform 0.3s ease-out",
             }}
           >
+            {/* Page loading indicator */}
+            {pageLoading && !loading && (
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
+                <div
+                  className="w-6 h-6 rounded-full border-2 animate-spin"
+                  style={{ borderColor: "rgba(255,255,255,0.1)", borderTopColor: "white" }}
+                />
+              </div>
+            )}
+
             <Document
               file={proxyUrl}
               onLoadSuccess={onDocumentLoadSuccess}
               onLoadError={onDocumentLoadError}
               loading={null}
               className={`flex ${viewMode === "double" && !isMobile ? "gap-4" : ""}`}
+              externalLinkTarget="_blank"
             >
-              {/* Page loading indicator */}
-              {pageLoading && !loading && (
-                <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
-                  <div
-                    className="w-6 h-6 rounded-full border-2 animate-spin"
-                    style={{ borderColor: "rgba(255,255,255,0.1)", borderTopColor: "white" }}
-                  />
-                </div>
-              )}
-
-              {/* Main page */}
-              <Page
-                pageNumber={currentPage}
-                width={getPageWidth()}
-                onLoadSuccess={onPageLoadSuccess}
-                loading={null}
-                renderTextLayer={!isMobile}
-                renderAnnotationLayer={!isMobile}
-                className="shadow-2xl rounded overflow-hidden"
-              />
-
-              {/* Second page in double mode */}
-              {secondPageNum && (
+              {/* Main page - use visibility to completely hide until loaded */}
+              <div 
+                style={{ 
+                  visibility: pageLoading ? "hidden" : "visible",
+                  background: "transparent",
+                }}
+              >
                 <Page
-                  pageNumber={secondPageNum}
+                  pageNumber={currentPage}
                   width={getPageWidth()}
+                  onLoadSuccess={onPageLoadSuccess}
                   loading={null}
                   renderTextLayer={!isMobile}
                   renderAnnotationLayer={!isMobile}
                   className="shadow-2xl rounded overflow-hidden"
+                  canvasBackground="transparent"
                 />
+              </div>
+
+              {/* Second page in double mode */}
+              {secondPageNum && (
+                <div 
+                  style={{ 
+                    visibility: pageLoading ? "hidden" : "visible",
+                    background: "transparent",
+                  }}
+                >
+                  <Page
+                    pageNumber={secondPageNum}
+                    width={getPageWidth()}
+                    loading={null}
+                    renderTextLayer={!isMobile}
+                    renderAnnotationLayer={!isMobile}
+                    className="shadow-2xl rounded overflow-hidden"
+                    canvasBackground="transparent"
+                  />
+                </div>
               )}
             </Document>
           </div>

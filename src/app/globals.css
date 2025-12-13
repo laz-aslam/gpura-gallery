@@ -457,3 +457,51 @@ body {
   }
 }
 
+/* Toast fade in up animation */
+@keyframes fadeInUp {
+  0% {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  15% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  85% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 3s ease-out forwards;
+}
+
+/* PDF viewer - prevent white flash during page load */
+.react-pdf__Document,
+.react-pdf__Page,
+.react-pdf__Page__canvas,
+.react-pdf__Page__textContent,
+.react-pdf__Page__annotations {
+  background: transparent !important;
+}
+
+/* Extra specificity for mobile */
+.pdf-page-dark,
+.pdf-page-dark * {
+  background-color: transparent !important;
+}
+
+.pdf-page-dark canvas {
+  background: transparent !important;
+}
+
+/* Hide the page until it's ready - canvas element specifically */
+.pdf-page-dark .react-pdf__Page__canvas {
+  opacity: inherit;
+}
+
