@@ -6,7 +6,12 @@ import { useViewerStore } from "@/store/viewer-store";
 import { useDeviceType } from "@/hooks/useDeviceType";
 import { usePageUrlSync } from "@/hooks/usePageUrlSync";
 import { CitationModal } from "./CitationModal";
-import type { IIIFPage } from "@/lib/types";
+import type {
+  IIIFPage,
+  IIIFManifestData,
+  IIIFCanvas,
+  IIIFSequence,
+} from "@/lib/types";
 
 import dynamic from "next/dynamic";
 
@@ -111,48 +116,6 @@ function extractLabel(label: unknown): string | undefined {
   return undefined;
 }
 
-// Types for IIIF manifest parsing
-interface IIIFManifestData {
-  items?: IIIFCanvas[];
-  sequences?: IIIFSequence[];
-  [key: string]: unknown;
-}
-
-interface IIIFCanvas {
-  id?: string;
-  "@id"?: string;
-  type?: string;
-  label?: unknown;
-  width?: number;
-  height?: number;
-  items?: IIIFAnnotationPage[];
-  images?: IIIFImage[];
-}
-
-interface IIIFAnnotationPage {
-  items?: IIIFAnnotation[];
-}
-
-interface IIIFAnnotation {
-  body?: IIIFBody;
-}
-
-interface IIIFBody {
-  id?: string;
-  width?: number;
-  height?: number;
-}
-
-interface IIIFSequence {
-  canvases?: IIIFCanvas[];
-}
-
-interface IIIFImage {
-  resource?: {
-    "@id"?: string;
-  };
-}
-
 interface DocumentViewerProps {
   onClose?: () => void;
 }
@@ -235,13 +198,13 @@ export function DocumentViewer({ onClose }: DocumentViewerProps = {}) {
   const handleShare = useCallback(async () => {
     // Extract item ID from sourceUrl
     const match = sourceUrl?.match(/\/item\/(\d+)/);
-    const itemId = match?.[1];
+    const extractedItemId = match?.[1];
     
-    if (!itemId) return;
+    if (!extractedItemId) return;
     
     // Build share URL with optional page parameter
     const pageParam = currentIndex > 0 ? `?p=${currentIndex + 1}` : "";
-    const shareUrl = `${window.location.origin}/${itemId}${pageParam}`;
+    const shareUrl = `${window.location.origin}/${extractedItemId}${pageParam}`;
     
     const success = await copyToClipboard(shareUrl);
     
