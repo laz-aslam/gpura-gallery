@@ -2,8 +2,6 @@
  * Preloading utilities for documents (PDF and IIIF)
  */
 
-import type { IIIFManifestData } from "./types";
-
 // Track preloaded URLs to avoid duplicate requests
 const preloadedUrls = new Set<string>();
 const preloadedManifests = new Map<string, string[]>(); // manifest URL -> page URLs
@@ -90,7 +88,7 @@ export function preloadAdjacentIIIFPages(
 /**
  * Extract page image URLs from IIIF manifest
  */
-function extractPageUrls(manifest: IIIFManifestData): string[] {
+function extractPageUrls(manifest: IIIFManifest): string[] {
   const urls: string[] = [];
 
   // IIIF 3.0 format
@@ -135,5 +133,22 @@ function extractPageUrls(manifest: IIIFManifestData): string[] {
 export function clearPreloadCache(): void {
   preloadedUrls.clear();
   preloadedManifests.clear();
+}
+
+// Types for IIIF manifest parsing
+interface IIIFManifest {
+  items?: IIIFCanvas[];
+  sequences?: IIIFSequence[];
+}
+
+interface IIIFCanvas {
+  type?: string;
+  items?: { items?: { body?: { id?: string } }[] }[];
+}
+
+interface IIIFSequence {
+  canvases?: {
+    images?: { resource?: { "@id"?: string } }[];
+  }[];
 }
 
