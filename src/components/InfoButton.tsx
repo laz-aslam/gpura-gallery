@@ -70,6 +70,18 @@ export function InfoButton() {
             </a>{" "}
             is a diverse collection of digitized artefacts related to Kerala, across various languages and scripts.
           </p>
+          <p className="text-xs leading-relaxed mt-3" style={{ color: "rgba(255, 255, 255, 0.7)" }}>
+            Browse the full archive at{" "}
+            <a
+              href={siteConfig.links.classicSite}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline hover:text-white transition-colors"
+            >
+              gpura.org
+            </a>
+            .
+          </p>
           <div className="mt-3 pt-3 flex flex-wrap gap-y-3" style={{ borderTop: "1px solid rgba(255, 255, 255, 0.1)" }}>
             <div className="text-center" style={{ width: "33.33%" }}>
               <div className="text-sm font-semibold text-white">6,782</div>
@@ -93,19 +105,28 @@ export function InfoButton() {
             </div>
           </div>
           <div className="mt-3 pt-3" style={{ borderTop: "1px solid rgba(255, 255, 255, 0.1)" }}>
-            <div className="flex flex-col gap-2">
+            <p className="text-xs leading-relaxed mb-3" style={{ color: "rgba(255, 255, 255, 0.5)" }}>
+              Gallery website built & maintained by{" "}
               <a
-                href={siteConfig.links.classicSite}
+                href="https://lazim.one"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-xs flex items-center gap-2 hover:text-white transition-colors"
-                style={{ color: "rgba(255, 255, 255, 0.5)" }}
+                className="underline hover:text-white transition-colors"
               >
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                </svg>
-                gpura.org
+                Lazim
               </a>
+              . For issues, feature requests, or discussions, visit the{" "}
+              <a
+                href="https://forum.indicarchive.org/tag/granthappura"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline hover:text-white transition-colors"
+              >
+                forum
+              </a>
+              .
+            </p>
+            <div className="flex flex-col gap-2">
               <a
                 href={siteConfig.links.github}
                 target="_blank"
