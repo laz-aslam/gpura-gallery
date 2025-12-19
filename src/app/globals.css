@@ -481,6 +481,22 @@ body {
   animation: fadeInUp 3s ease-out forwards;
 }
 
+/* Modal fade-in animation (doesn't fade out like toasts) */
+@keyframes modalFadeIn {
+  0% {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-modal-in {
+  animation: modalFadeIn 0.2s ease-out forwards;
+}
+
 /* PDF viewer - prevent white flash during page load */
 .react-pdf__Document,
 .react-pdf__Page,

@@ -28,7 +28,18 @@ export function ItemDrawer() {
   // Open document viewer
   const handleReadDocument = useCallback(() => {
     if (item?.documentSource) {
-      openViewer(item.documentSource, item.title, item.sourceUrl);
+      openViewer(
+        item.documentSource, 
+        item.title, 
+        item.sourceUrl,
+        {
+          authors: item.authors,
+          year: item.year,
+          publisher: item.publisher,
+          itemId: item.id,
+          itemType: item.type,
+        }
+      );
     }
   }, [item, openViewer]);
 
