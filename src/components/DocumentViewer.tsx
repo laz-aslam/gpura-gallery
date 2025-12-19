@@ -235,13 +235,13 @@ export function DocumentViewer({ onClose }: DocumentViewerProps = {}) {
   const handleShare = useCallback(async () => {
     // Extract item ID from sourceUrl
     const match = sourceUrl?.match(/\/item\/(\d+)/);
-    const itemId = match?.[1];
+    const extractedItemId = match?.[1];
     
-    if (!itemId) return;
+    if (!extractedItemId) return;
     
     // Build share URL with optional page parameter
     const pageParam = currentIndex > 0 ? `?p=${currentIndex + 1}` : "";
-    const shareUrl = `${window.location.origin}/${itemId}${pageParam}`;
+    const shareUrl = `${window.location.origin}/${extractedItemId}${pageParam}`;
     
     const success = await copyToClipboard(shareUrl);
     
