@@ -21,7 +21,18 @@ export function ItemViewerPage({ item, initialPage }: ItemViewerPageProps) {
   useEffect(() => {
     if (item.documentSource && !hasOpenedRef.current) {
       hasOpenedRef.current = true;
-      openViewer(item.documentSource, item.title, item.sourceUrl);
+      openViewer(
+        item.documentSource, 
+        item.title, 
+        item.sourceUrl,
+        {
+          authors: item.authors,
+          year: item.year,
+          publisher: item.publisher,
+          itemId: item.id,
+          itemType: item.type,
+        }
+      );
       // Set initial page index immediately (for PDFs that don't wait for pages array)
       if (initialPage > 0) {
         setCurrentIndex(initialPage);

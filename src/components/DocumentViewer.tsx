@@ -4,6 +4,8 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { useDrag } from "@use-gesture/react";
 import { useViewerStore } from "@/store/viewer-store";
 import { useDeviceType } from "@/hooks/useDeviceType";
+import { usePageUrlSync } from "@/hooks/usePageUrlSync";
+import { CitationModal } from "./CitationModal";
 import type { IIIFPage } from "@/lib/types";
 
 import dynamic from "next/dynamic";
@@ -172,6 +174,12 @@ export function DocumentViewer({ onClose }: DocumentViewerProps = {}) {
     setPages,
     setError,
     setViewMode,
+    // Citation metadata
+    authors,
+    year,
+    publisher,
+    itemId,
+    itemType,
   } = useViewerStore();
 
   const { isMobile, isTouch } = useDeviceType();
@@ -180,7 +188,11 @@ export function DocumentViewer({ onClose }: DocumentViewerProps = {}) {
   const [swipeOffset, setSwipeOffset] = useState(0);
   const [isSwipingPage, setIsSwipingPage] = useState(false);
   const [showCopied, setShowCopied] = useState(false);
+  const [showCiteModal, setShowCiteModal] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // Sync current page to browser URL for shareable links
+  usePageUrlSync(currentIndex + 1, isOpen);
 
   // Handle close with optional custom handler
   const handleClose = useCallback(() => {
@@ -420,7 +432,22 @@ export function DocumentViewer({ onClose }: DocumentViewerProps = {}) {
 
         {/* Actions */}
         <div className="flex items-center gap-1 md:gap-2">
-          {/* Copy Link button */}
+          {/* Cite button - opens citation modal */}
+          {sourceUrl && itemId && (
+            <button
+              onClick={() => setShowCiteModal(true)}
+              className="flex items-center gap-1 md:gap-2 px-2 md:px-3 py-1.5 rounded-lg text-sm transition-colors hover:bg-white/10 active:scale-95"
+              style={{ color: "#999" }}
+              aria-label="Cite this page"
+            >
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M4.583 17.321C3.553 16.227 3 15 3 13.011c0-3.5 2.457-6.637 6.03-8.188l.893 1.378c-3.335 1.804-3.987 4.145-4.247 5.621.537-.278 1.24-.375 1.929-.311 1.804.167 3.226 1.648 3.226 3.489a3.5 3.5 0 01-3.5 3.5 3.871 3.871 0 01-2.748-1.179zm10 0C13.553 16.227 13 15 13 13.011c0-3.5 2.457-6.637 6.03-8.188l.893 1.378c-3.335 1.804-3.987 4.145-4.247 5.621.537-.278 1.24-.375 1.929-.311 1.804.167 3.226 1.648 3.226 3.489a3.5 3.5 0 01-3.5 3.5 3.871 3.871 0 01-2.748-1.179z"/>
+              </svg>
+              <span className="hidden md:block">Cite</span>
+            </button>
+          )}
+
+          {/* Copy Link button - quick copy */}
           {sourceUrl && (
             <button
               onClick={handleShare}
@@ -799,6 +826,21 @@ export function DocumentViewer({ onClose }: DocumentViewerProps = {}) {
           </div>
         </div>
       )}
+
+      {/* Citation Modal */}
+      <CitationModal
+        isOpen={showCiteModal}
+        onClose={() => setShowCiteModal(false)}
+        title={title}
+        authors={authors}
+        year={year}
+        publisher={publisher}
+        currentPage={currentIndex + 1}
+        totalPages={pages.length || 1}
+        itemId={itemId || ""}
+        sourceUrl={sourceUrl || ""}
+        itemType={itemType}
+      />
 
     </div>
   );

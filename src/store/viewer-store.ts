@@ -5,6 +5,17 @@ import type { IIIFPage, DocumentSource } from "@/lib/types";
 
 export type ViewMode = "single" | "double";
 
+/**
+ * Metadata for citation generation
+ */
+interface CitationMetadata {
+  authors?: string[];
+  year?: number | null;
+  publisher?: string | null;
+  itemId?: string;
+  itemType?: string | null; // book, periodical, manuscript, etc.
+}
+
 interface ViewerState {
   isOpen: boolean;
   documentSource: DocumentSource | null;
@@ -16,8 +27,15 @@ interface ViewerState {
   error: string | null;
   viewMode: ViewMode;
   
+  // Citation metadata
+  authors?: string[];
+  year?: number | null;
+  publisher?: string | null;
+  itemId?: string;
+  itemType?: string | null;
+  
   // Actions
-  openViewer: (source: DocumentSource, title: string, sourceUrl?: string) => void;
+  openViewer: (source: DocumentSource, title: string, sourceUrl?: string, metadata?: CitationMetadata) => void;
   closeViewer: () => void;
   nextPage: () => void;
   prevPage: () => void;
@@ -39,8 +57,14 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
   loading: false,
   error: null,
   viewMode: "single",
+  // Citation metadata
+  authors: undefined,
+  year: null,
+  publisher: null,
+  itemId: undefined,
+  itemType: null,
 
-  openViewer: (source, title, sourceUrl) => {
+  openViewer: (source, title, sourceUrl, metadata) => {
     set({
       isOpen: true,
       documentSource: source,
@@ -50,6 +74,12 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
       currentIndex: 0,
       loading: source.type === "iiif", // Only load for IIIF, PDF loads directly
       error: null,
+      // Citation metadata
+      authors: metadata?.authors,
+      year: metadata?.year,
+      publisher: metadata?.publisher,
+      itemId: metadata?.itemId,
+      itemType: metadata?.itemType,
     });
   },
 
@@ -63,6 +93,12 @@ export const useViewerStore = create<ViewerState>((set, get) => ({
       currentIndex: 0,
       loading: false,
       error: null,
+      // Reset citation metadata
+      authors: undefined,
+      year: null,
+      publisher: null,
+      itemId: undefined,
+      itemType: null,
     });
   },
 
