@@ -415,35 +415,23 @@ export function DocumentViewer({ onClose }: DocumentViewerProps = {}) {
             <h1 className={`font-medium truncate ${isMobile ? "text-xs max-w-[150px]" : "text-sm max-w-md"}`}>
               {title}
             </h1>
-            {isIiif && pages.length > 0 && (
-              <p className="text-xs" style={{ color: "#666" }}>
-                {viewMode === "double" && !isMobile && secondPage
-                  ? `${currentIndex + 1}-${currentIndex + 2} / ${pages.length}`
-                  : `${currentIndex + 1} / ${pages.length}`}
-              </p>
-            )}
-            {isPdf && (
-              <p className="text-xs" style={{ color: "#666" }}>
-                PDF Document
-              </p>
-            )}
           </div>
         </div>
 
         {/* Actions */}
         <div className="flex items-center gap-1 md:gap-2">
-          {/* Cite button - opens citation modal */}
-          {sourceUrl && itemId && (
+          {/* Cite button - opens citation modal (desktop only) */}
+          {sourceUrl && itemId && !isMobile && (
             <button
               onClick={() => setShowCiteModal(true)}
-              className="flex items-center gap-1 md:gap-2 px-2 md:px-3 py-1.5 rounded-lg text-sm transition-colors hover:bg-white/10 active:scale-95"
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm transition-colors hover:bg-white/10 active:scale-95"
               style={{ color: "#999" }}
               aria-label="Cite this page"
             >
               <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M4.583 17.321C3.553 16.227 3 15 3 13.011c0-3.5 2.457-6.637 6.03-8.188l.893 1.378c-3.335 1.804-3.987 4.145-4.247 5.621.537-.278 1.24-.375 1.929-.311 1.804.167 3.226 1.648 3.226 3.489a3.5 3.5 0 01-3.5 3.5 3.871 3.871 0 01-2.748-1.179zm10 0C13.553 16.227 13 15 13 13.011c0-3.5 2.457-6.637 6.03-8.188l.893 1.378c-3.335 1.804-3.987 4.145-4.247 5.621.537-.278 1.24-.375 1.929-.311 1.804.167 3.226 1.648 3.226 3.489a3.5 3.5 0 01-3.5 3.5 3.871 3.871 0 01-2.748-1.179z"/>
               </svg>
-              <span className="hidden md:block">Cite</span>
+              <span>Cite</span>
             </button>
           )}
 
