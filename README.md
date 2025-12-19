@@ -78,13 +78,13 @@ src/
 ├── components/
 │   ├── InfiniteCanvas.tsx    # Canvas with pan/zoom
 │   ├── CanvasItemCard.tsx    # Image cards
-│   ├── SearchBar.tsx         # Search input
+│   ├── FilterBar.tsx         # Search & filters
 │   └── ItemDrawer.tsx        # Detail drawer
 ├── store/
 │   ├── canvas-store.ts       # Camera, tiles state
-│   └── search-store.ts       # Query, filters state
+│   └── viewer-store.ts       # Viewer state
 ├── server/adapters/
-│   └── OmekaAdapter.ts       # gpura API integration
+│   └── OmekaAdapter.ts       # Omeka S API integration
 └── lib/
     ├── types.ts              # TypeScript types
     └── canvas-utils.ts       # Position/culling math
