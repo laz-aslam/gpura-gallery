@@ -1,4 +1,4 @@
-# Contributing to gpura gallery
+# Contributing to Gpura Gallery
 
 Thank you for your interest in contributing! This project is an infinite canvas interface for exploring Kerala's digital archive.
 
@@ -25,9 +25,9 @@ Thank you for your interest in contributing! This project is an infinite canvas 
 
 ## Development
 
-- **Framework:** Next.js 15 with App Router
+- **Framework:** Next.js 16 with App Router
 - **Language:** TypeScript
-- **Styling:** Tailwind CSS
+- **Styling:** Tailwind CSS 4
 - **State:** Zustand
 
 ### Project Structure
