@@ -42,7 +42,7 @@ export async function GET(request: NextRequest) {
         Accept: "application/json",
       },
       next: {
-        revalidate: 43200, // Cache for 12 hours
+        revalidate: 172800, // Cache for 48 hours
       },
     });
 

@@ -81,11 +81,11 @@ export function getCache<T>(namespace: string) {
 // =============================================================================
 
 export const CACHE_TTL = {
-  /** 12 hours - main cache duration for all API responses */
-  DEFAULT: 12 * 60 * 60 * 1000,
+  /** 48 hours - main cache duration for all API responses */
+  DEFAULT: 48 * 60 * 60 * 1000,
 
-  /** 18 hours - extended window for stale-while-revalidate */
-  STALE: 18 * 60 * 60 * 1000,
+  /** 72 hours - extended window for stale-while-revalidate */
+  STALE: 72 * 60 * 60 * 1000,
 } as const;
 
 // =============================================================================
@@ -93,10 +93,10 @@ export const CACHE_TTL = {
 // =============================================================================
 
 export const CACHE_HEADERS = {
-  /** 12 hours + 6 hours stale-while-revalidate */
-  DEFAULT: "public, max-age=43200, stale-while-revalidate=21600",
+  /** 48 hours + 24 hours stale-while-revalidate */
+  DEFAULT: "public, max-age=172800, stale-while-revalidate=86400",
 
-  /** 24 hours for static assets like PDFs */
-  STATIC: "public, max-age=86400",
+  /** 7 days for static assets like PDFs (they never change) */
+  STATIC: "public, max-age=604800",
 } as const;
 
