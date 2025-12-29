@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { CACHE_HEADERS } from "@/lib/cache";
 
 /**
  * PDF Proxy API - fetches PDFs from external sources and serves them
@@ -53,7 +54,7 @@ export async function GET(request: NextRequest) {
       headers: {
         "Content-Type": "application/pdf",
         "Content-Length": pdfData.byteLength.toString(),
-        "Cache-Control": "public, max-age=3600", // Cache for 1 hour
+        "Cache-Control": CACHE_HEADERS.STATIC, // 24 hours for static PDFs
         "Access-Control-Allow-Origin": "*",
       },
     });
@@ -65,4 +66,3 @@ export async function GET(request: NextRequest) {
     );
   }
 }
-

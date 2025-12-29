@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { CACHE_HEADERS } from "@/lib/cache";
 
 /**
  * Proxy endpoint to fetch IIIF manifests (avoids CORS issues)
@@ -41,7 +42,7 @@ export async function GET(request: NextRequest) {
         Accept: "application/json",
       },
       next: {
-        revalidate: 3600, // Cache for 1 hour
+        revalidate: 43200, // Cache for 12 hours
       },
     });
 
@@ -56,7 +57,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(manifest, {
       headers: {
-        "Cache-Control": "public, max-age=3600",
+        "Cache-Control": CACHE_HEADERS.DEFAULT,
       },
     });
   } catch (error) {
@@ -67,8 +68,3 @@ export async function GET(request: NextRequest) {
     );
   }
 }
-
-
-
-
-

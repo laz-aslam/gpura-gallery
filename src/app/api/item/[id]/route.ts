@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDataAdapter } from "@/server/adapters/DataAdapter";
+import { getCache, CACHE_TTL, CACHE_HEADERS } from "@/lib/cache";
+import type { ItemDetail } from "@/lib/types";
+
+// In-memory cache for item details
+const itemCache = getCache<ItemDetail>("items");
 
 export async function GET(
   request: NextRequest,
@@ -15,6 +20,17 @@ export async function GET(
       );
     }
 
+    // Check cache first
+    const cached = itemCache.get(id, CACHE_TTL.DEFAULT);
+    if (cached) {
+      return NextResponse.json(cached, {
+        headers: {
+          "Cache-Control": CACHE_HEADERS.DEFAULT,
+          "X-Cache": "HIT",
+        },
+      });
+    }
+
     // Get adapter and fetch item
     const adapter = await getDataAdapter();
     const item = await adapter.getItem(id);
@@ -26,7 +42,16 @@ export async function GET(
       );
     }
 
-    return NextResponse.json(item);
+    // Store in cache
+    itemCache.set(id, item);
+    itemCache.cleanup(CACHE_TTL.DEFAULT);
+
+    return NextResponse.json(item, {
+      headers: {
+        "Cache-Control": CACHE_HEADERS.DEFAULT,
+        "X-Cache": "MISS",
+      },
+    });
   } catch (error) {
     console.error("Item API error:", error);
     return NextResponse.json(
@@ -35,9 +60,3 @@ export async function GET(
     );
   }
 }
-
-
-
-
-
-

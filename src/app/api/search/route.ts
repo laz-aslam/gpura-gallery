@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDataAdapter } from "@/server/adapters/DataAdapter";
+import { getCache, CACHE_TTL, CACHE_HEADERS } from "@/lib/cache";
 import type { SearchFilters, SearchResponse } from "@/lib/types";
 
 // In-memory cache for search results
-const searchCache = new Map<string, { data: SearchResponse; timestamp: number }>();
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutes for search results
+const searchCache = getCache<SearchResponse>("search");
 
 export async function GET(request: NextRequest) {
   try {
@@ -41,11 +41,11 @@ export async function GET(request: NextRequest) {
     const cacheKey = `${q}:${page}:${pageSize}:${filtersParam || ""}`;
 
     // Check cache
-    const cached = searchCache.get(cacheKey);
-    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
-      return NextResponse.json(cached.data, {
+    const cached = searchCache.get(cacheKey, CACHE_TTL.DEFAULT);
+    if (cached) {
+      return NextResponse.json(cached, {
         headers: {
-          "Cache-Control": "public, max-age=300",
+          "Cache-Control": CACHE_HEADERS.DEFAULT,
           "X-Cache": "HIT",
         },
       });
@@ -61,21 +61,12 @@ export async function GET(request: NextRequest) {
     });
 
     // Store in cache
-    searchCache.set(cacheKey, { data: response, timestamp: Date.now() });
-
-    // Clean old cache entries
-    if (searchCache.size > 100) {
-      const now = Date.now();
-      for (const [key, value] of searchCache.entries()) {
-        if (now - value.timestamp > CACHE_TTL) {
-          searchCache.delete(key);
-        }
-      }
-    }
+    searchCache.set(cacheKey, response);
+    searchCache.cleanup(CACHE_TTL.DEFAULT, 200);
 
     return NextResponse.json(response, {
       headers: {
-        "Cache-Control": "public, max-age=300",
+        "Cache-Control": CACHE_HEADERS.DEFAULT,
         "X-Cache": "MISS",
       },
     });
