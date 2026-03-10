@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "@use-gesture/react": "^10.3.1",
-    "next": "16.0.8",
+    "next": "16.0.10",
     "react": "19.2.1",
     "react-dom": "19.2.1",
     "react-pdf": "^10.2.0",
