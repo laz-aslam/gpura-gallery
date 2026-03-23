@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, memo, useCallback } from "react";
+import { useState, memo, useCallback, type MouseEvent } from "react";
 import type { CanvasItem } from "@/lib/types";
 
 interface CanvasItemCardProps {
@@ -22,8 +22,26 @@ function CanvasItemCardComponent({ item, onClick }: CanvasItemCardProps) {
     return null;
   }
 
+  const href = `/${item.id}`;
+
+  const handleLinkClick = (e: MouseEvent<HTMLAnchorElement>) => {
+    if (
+      e.button !== 0 ||
+      e.metaKey ||
+      e.ctrlKey ||
+      e.shiftKey ||
+      e.altKey
+    ) {
+      return;
+    }
+
+    e.preventDefault();
+    onClick();
+  };
+
   return (
-    <div
+    <a
+      href={href}
       className="canvas-card"
       style={{
         left: item.x,
@@ -32,16 +50,14 @@ function CanvasItemCardComponent({ item, onClick }: CanvasItemCardProps) {
         height: item.height,
         transform: item.rotation ? `rotate(${item.rotation}deg)` : undefined,
       }}
-      onClick={onClick}
-      role="button"
-      tabIndex={0}
+      onClick={handleLinkClick}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
           onClick();
         }
       }}
-      aria-label={`View ${item.title}`}
+      aria-label={`Open ${item.title}`}
     >
       {/* Loading skeleton */}
       {imageState === "loading" && (
@@ -58,7 +74,7 @@ function CanvasItemCardComponent({ item, onClick }: CanvasItemCardProps) {
       {/* Image */}
       <img
         src={item.thumbnailUrl}
-        alt=""
+        alt={item.title}
         className={`w-full h-full object-cover transition-opacity duration-200 ${
           imageState === "loaded" ? "opacity-100" : "opacity-0"
         }`}
@@ -78,7 +94,7 @@ function CanvasItemCardComponent({ item, onClick }: CanvasItemCardProps) {
           <p className="text-white/60 text-[10px] mt-1">{item.year}</p>
         )}
       </div>
-    </div>
+    </a>
   );
 }
 

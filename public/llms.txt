@@ -1,0 +1,17 @@
+# gpura gallery
+
+> gpura gallery is an interactive discovery interface for Granthappura, a digital archive of books, periodicals, manuscripts, images, audio, and video related to Kerala across multiple languages and scripts.
+
+## Recommended entry points
+- /discover: crawlable archive landing page with direct links to records and browse pages
+- /discover/type/book: books from the archive
+- /discover/type/periodical: periodicals from the archive
+- /discover/language/ml: Malayalam-language records
+- /discover/language/en: English-language records
+
+## Primary source
+- https://gpura.org
+
+## Notes
+- Item pages at /{id} contain bibliographic metadata, source links, and reader access when available.
+- The interactive homepage is optimized for visual exploration; use /discover for a text-forward entry point.

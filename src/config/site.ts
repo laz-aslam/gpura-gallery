@@ -2,6 +2,7 @@ export const siteConfig = {
   name: "gpura gallery",
   tagline: "Explore Kerala's digital archive",
   description: "Search through thousands of digitised books, periodicals, and artefacts from Granthappura.",
+  organizationName: "Indic Digital Archive Foundation",
   links: {
     classicSite: "https://gpura.org",
     github: "https://github.com/laz-aslam/gpura-gallery",

@@ -3,6 +3,7 @@ import { Inter } from "next/font/google";
 import Script from "next/script";
 import "./globals.css";
 import { siteConfig } from "@/config/site";
+import { getSiteUrl } from "@/lib/site-url";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -11,20 +12,16 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
+  metadataBase: getSiteUrl(),
   title: siteConfig.name,
-  description: siteConfig.tagline,
-  keywords: [
-    "Kerala",
-    "Malayalam",
-    "Digital Archive",
-    "Granthappura",
-    "gpura",
-    "Books",
-    "Periodicals",
-    "Heritage",
-    "Public Domain",
-  ],
+  description: siteConfig.description,
+  applicationName: siteConfig.name,
   authors: [{ name: "Granthappura" }],
+  creator: siteConfig.organizationName,
+  publisher: siteConfig.organizationName,
+  alternates: {
+    canonical: "/",
+  },
   icons: {
     icon: [
       { url: "/favicon-16x16.png", sizes: "16x16", type: "image/png" },
@@ -34,7 +31,9 @@ export const metadata: Metadata = {
   },
   openGraph: {
     title: siteConfig.name,
-    description: siteConfig.tagline,
+    description: siteConfig.description,
+    siteName: siteConfig.name,
+    url: "/",
     type: "website",
     images: [
       {
@@ -48,7 +47,7 @@ export const metadata: Metadata = {
   twitter: {
     card: "summary_large_image",
     title: siteConfig.name,
-    description: siteConfig.tagline,
+    description: siteConfig.description,
     images: ["/og-image.png?v=2"],
   },
 };
