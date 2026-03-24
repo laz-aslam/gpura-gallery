@@ -45,6 +45,20 @@ function processQueue() {
   }
 }
 
+function matchesCurrentTileContext(
+  key: string,
+  query: string,
+  filters: SearchFilters
+): boolean {
+  const filtersHash = hashFilters(filters);
+
+  if (!query && !filtersHash) {
+    return !key.includes(":");
+  }
+
+  return key.endsWith(`:${query || ""}:${filtersHash || ""}`);
+}
+
 interface CanvasState {
   cameraX: number;
   cameraY: number;
@@ -75,7 +89,7 @@ interface CanvasState {
   isAnyTileLoading: () => boolean;
   
   // Search mode actions
-  performSearch: (query: string) => Promise<void>;
+  performSearch: (query?: string) => Promise<void>;
   loadMoreSearchResults: () => Promise<void>;
   clearSearch: () => void;
   getSearchResultsAsCanvasItems: () => CanvasItem[];
@@ -117,11 +131,13 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 
   loadTile: async (tileX, tileY) => {
     const state = get();
+    const requestQuery = state.query;
+    const requestFilters = state.filters;
     const key = getTileKey(
       tileX,
       tileY,
-      state.query,
-      hashFilters(state.filters)
+      requestQuery,
+      hashFilters(requestFilters)
     );
 
     const existing = state.tiles.get(key);
@@ -153,12 +169,12 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
             seed: sessionSeed.toString(),
           });
 
-          if (state.query) {
-            params.set("q", state.query);
+          if (requestQuery) {
+            params.set("q", requestQuery);
           }
 
-          if (Object.keys(state.filters).length > 0) {
-            params.set("filters", JSON.stringify(state.filters));
+          if (Object.keys(requestFilters).length > 0) {
+            params.set("filters", JSON.stringify(requestFilters));
           }
 
           const response = await fetch(`/api/tiles?${params}`);
@@ -168,6 +184,14 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 
           const data = await response.json();
           const items = itemsToCanvasItems(data.items, tileX, tileY);
+          const latestState = get();
+
+          if (
+            latestState.query !== requestQuery ||
+            hashFilters(latestState.filters) !== hashFilters(requestFilters)
+          ) {
+            return;
+          }
 
           set((s) => {
             const newTiles = new Map(s.tiles);
@@ -186,7 +210,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
             return { tiles: newTiles };
           });
         } finally {
-          activeRequestCount--;
+          activeRequestCount = Math.max(0, activeRequestCount - 1);
           inFlightRequests.delete(key);
           processQueue();
           resolveOuter();
@@ -220,7 +244,6 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   clearTiles: () => {
     inFlightRequests.clear();
     requestQueue.length = 0; // Clear pending queue
-    activeRequestCount = 0;
     set({ tiles: new Map() });
   },
 
@@ -241,7 +264,11 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     const state = get();
     const allItems: CanvasItem[] = [];
 
-    state.tiles.forEach((tileData) => {
+    state.tiles.forEach((tileData, key) => {
+      if (!matchesCurrentTileContext(key, state.query, state.filters)) {
+        return;
+      }
+
       if (!tileData.loading && tileData.items.length > 0) {
         allItems.push(...tileData.items);
       }
@@ -252,25 +279,25 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 
   isAnyTileLoading: () => {
     const state = get();
-    for (const tileData of state.tiles.values()) {
+    for (const [key, tileData] of state.tiles.entries()) {
+      if (!matchesCurrentTileContext(key, state.query, state.filters)) {
+        continue;
+      }
+
       if (tileData.loading) return true;
     }
     return false;
   },
 
   // Search mode actions
-  performSearch: async (query: string) => {
+  performSearch: async (query = "") => {
     const trimmedQuery = query.trim();
-    
-    if (!trimmedQuery) {
-      get().clearSearch();
-      return;
-    }
+    const hasFilters = Object.values(get().filters).some((value) =>
+      Array.isArray(value) ? value.length > 0 : value !== undefined
+    );
 
-    const currentState = get();
-    
-    // Skip if already searching for the same query
-    if (currentState.search.loading && currentState.query === trimmedQuery) {
+    if (!trimmedQuery && !hasFilters) {
+      get().clearSearch();
       return;
     }
 
@@ -293,14 +320,22 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 
     try {
       const state = get();
+      const shouldScanFilters = !trimmedQuery && hasFilters;
       const params = new URLSearchParams({
-        q: trimmedQuery,
         page: "1",
         pageSize: "100",
       });
 
+      if (trimmedQuery) {
+        params.set("q", trimmedQuery);
+      }
+
       if (Object.keys(state.filters).length > 0) {
         params.set("filters", JSON.stringify(state.filters));
+      }
+
+      if (shouldScanFilters) {
+        params.set("scan", "1");
       }
 
       const response = await fetch(`/api/search?${params}`);
@@ -346,14 +381,24 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     }));
 
     try {
+      const shouldScanFilters = !state.query && Object.values(state.filters).some((value) =>
+        Array.isArray(value) ? value.length > 0 : value !== undefined
+      );
       const params = new URLSearchParams({
-        q: state.query,
         page: nextPage.toString(),
         pageSize: "100",
       });
 
+      if (state.query) {
+        params.set("q", state.query);
+      }
+
       if (Object.keys(state.filters).length > 0) {
         params.set("filters", JSON.stringify(state.filters));
+      }
+
+      if (shouldScanFilters) {
+        params.set("scan", "1");
       }
 
       const response = await fetch(`/api/search?${params}`);
@@ -405,21 +450,34 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     if (!state.isSearchMode) return [];
 
     const { CARD_WIDTH, CARD_HEIGHT, CARD_GAP } = canvasConfig;
+    const seenIds = new Set<string>();
+    const renderableResults = state.search.results.filter((item) => {
+      if (seenIds.has(item.id)) {
+        return false;
+      }
+
+      const thumbnailUrl = item.thumbnailUrl?.trim();
+      if (!thumbnailUrl) {
+        return false;
+      }
+
+      seenIds.add(item.id);
+      return true;
+    });
     
     // Calculate how many columns fit in the viewport (responsive)
     const viewportWidth = state.viewportWidth || 1200;
     const cardWithGap = CARD_WIDTH + CARD_GAP;
-    const cols = Math.max(3, Math.floor((viewportWidth - CARD_GAP) / cardWithGap));
-    
-    // Calculate starting X to center the grid horizontally
-    const gridWidth = cols * cardWithGap;
-    const startX = Math.max(CARD_GAP, (viewportWidth - gridWidth) / 2);
-    
+    const cols = Math.max(1, Math.floor((viewportWidth - CARD_GAP) / cardWithGap));
+
+    // Match the normal browse view by packing results from the top-left edge.
+    const startX = CARD_GAP / 2;
+
     // Start Y below the header (with some padding)
     const startY = 80;
 
     // Convert search results to canvas items in a dense grid
-    return state.search.results.map((item, index) => {
+    return renderableResults.map((item, index) => {
       const col = index % cols;
       const row = Math.floor(index / cols);
 

@@ -66,11 +66,29 @@ export function InfiniteCanvas() {
       viewportHeight
     );
 
+    const shouldPrefetchFilteredTiles = hasActiveFilters(filters) && !isSearchMode;
+    const tileEntries = new Map<string, { tileX: number; tileY: number }>();
+
+    for (const tile of visibleTiles) {
+      tileEntries.set(`${tile.tileX},${tile.tileY}`, tile);
+    }
+
+    if (shouldPrefetchFilteredTiles) {
+      const centerTileX = Math.floor((-cameraX + viewportWidth / 2) / TILE_DIMENSIONS.width);
+      const centerTileY = Math.floor((-cameraY + viewportHeight / 2) / TILE_DIMENSIONS.height);
+
+      for (let tx = centerTileX - 2; tx <= centerTileX + 2; tx++) {
+        for (let ty = centerTileY - 2; ty <= centerTileY + 2; ty++) {
+          tileEntries.set(`${tx},${ty}`, { tileX: tx, tileY: ty });
+        }
+      }
+    }
+
     // Load center tiles first
     const centerX = -cameraX + viewportWidth / 2;
     const centerY = -cameraY + viewportHeight / 2;
 
-    const sortedTiles = visibleTiles.sort((a, b) => {
+    const sortedTiles = Array.from(tileEntries.values()).sort((a, b) => {
       const distA = Math.abs(a.tileX * TILE_DIMENSIONS.width - centerX) + 
                     Math.abs(a.tileY * TILE_DIMENSIONS.height - centerY);
       const distB = Math.abs(b.tileX * TILE_DIMENSIONS.width - centerX) + 
@@ -81,7 +99,7 @@ export function InfiniteCanvas() {
     sortedTiles.forEach(({ tileX, tileY }) => {
       loadTile(tileX, tileY);
     });
-  }, [cameraX, cameraY, viewportWidth, viewportHeight, loadTile]);
+  }, [cameraX, cameraY, viewportWidth, viewportHeight, loadTile, filters, isSearchMode]);
 
   // Initial load when viewport becomes ready (skip in search mode)
   useEffect(() => {
@@ -180,6 +198,18 @@ export function InfiniteCanvas() {
       momentumRef.current = null;
     }
   }, [pan]);
+
+  useEffect(() => {
+    if (momentumRef.current) {
+      cancelAnimationFrame(momentumRef.current);
+      momentumRef.current = null;
+    }
+
+    velocityRef.current = { x: 0, y: 0 };
+    lastPointerRef.current = null;
+    hasDraggedRef.current = false;
+    setDragging(false);
+  }, [filters, isSearchMode, setDragging]);
 
   // Handle pointer down
   const handlePointerDown = useCallback(
@@ -317,7 +347,7 @@ export function InfiniteCanvas() {
       >
         {visibleItems.map((item) => (
           <CanvasItemCard
-            key={item.id}
+            key={`${item.id}:${item.tileX}:${item.tileY}:${item.x}:${item.y}`}
             item={item}
             onClick={() => handleCardClick(item.id)}
           />

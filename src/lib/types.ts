@@ -113,6 +113,7 @@ export type SearchRequest = {
   filters?: SearchFilters;
   page?: number;
   pageSize?: number;
+  scanFilters?: boolean;
 };
 
 /**
@@ -230,4 +231,3 @@ export const TIME_RANGES = [
   { label: "1975–2000", min: 1976, max: 2000 },
   { label: "After 2000", min: 2001, max: undefined },
 ] as const;
-

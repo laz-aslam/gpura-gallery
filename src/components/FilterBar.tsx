@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { useCanvasStore } from "@/store/canvas-store";
 import { LANGUAGE_LABELS, TYPE_LABELS, TIME_RANGES } from "@/lib/types";
 import type { SearchFilters } from "@/lib/types";
+import { hasActiveFilters as hasSelectedFilters } from "@/lib/canvas-utils";
 
 // Main filter categories for gpura
 const LANGUAGES = ["ml", "en", "ta", "sa", "hi"] as const;
@@ -34,6 +35,7 @@ export function FilterBar() {
     clearSearch,
     isAnyTileLoading,
   } = useCanvasStore();
+  const hasActiveFilters = hasSelectedFilters(filters);
 
   // Use store's loading check - more stable than watching tiles Map
   const tilesLoading = isAnyTileLoading();
@@ -53,47 +55,50 @@ export function FilterBar() {
   const lastSearchedRef = useRef<string>("");
   const isSearchingRef = useRef<boolean>(false);
 
-  // Debounced real-time search as user types - minimal dependencies
+  // Debounced real-time search as the query or active filters change
   useEffect(() => {
     const trimmed = searchInput.trim();
+    const shouldSearch = Boolean(trimmed) || hasActiveFilters;
+    const searchKey = shouldSearch ? `${trimmed}::${JSON.stringify(filters)}` : "";
     
     // Skip if currently searching
     if (isSearchingRef.current) {
       return;
     }
     
-    // If input is empty, clear search after delay
-    if (!trimmed) {
-      if (lastSearchedRef.current) {
+    if (!shouldSearch) {
+      if (lastSearchedRef.current || isSearchMode) {
         const timeout = setTimeout(() => {
           lastSearchedRef.current = "";
           clearSearch();
         }, 300);
         return () => clearTimeout(timeout);
       }
+
       return;
     }
     
     // If input has content and different from last search, trigger search
-    if (trimmed !== lastSearchedRef.current) {
+    if (searchKey !== lastSearchedRef.current) {
+      const debounceMs = trimmed ? 400 : 120;
       const timeout = setTimeout(async () => {
         isSearchingRef.current = true;
-        lastSearchedRef.current = trimmed;
+        lastSearchedRef.current = searchKey;
         await performSearch(trimmed);
         isSearchingRef.current = false;
-      }, 400);
+      }, debounceMs);
       return () => clearTimeout(timeout);
     }
-  }, [searchInput]); // Only depend on searchInput
+  }, [searchInput, filters, hasActiveFilters, clearSearch, isSearchMode, performSearch]);
 
   // Handle search submit (for Enter key - immediate search)
   const handleSearchSubmit = useCallback((e: React.FormEvent) => {
     e.preventDefault();
     const trimmed = searchInput.trim();
-    if (trimmed) {
+    if (trimmed || hasActiveFilters) {
       performSearch(trimmed);
     }
-  }, [searchInput, performSearch]);
+  }, [searchInput, hasActiveFilters, performSearch]);
 
   // Handle clearing search
   const handleClearSearch = useCallback(() => {
@@ -125,14 +130,7 @@ export function FilterBar() {
     resetView();
     // setFilters already calls clearTiles and fetchFilterCount internally
     setFilters(newFilters);
-    
-    // If in search mode, re-run search with new filters
-    if (isSearchMode && searchInput.trim()) {
-      // Reset the ref so the search will fire again with new filters
-      lastSearchedRef.current = "";
-      setTimeout(() => performSearch(searchInput.trim()), 0);
-    }
-  }, [resetView, setFilters, isSearchMode, searchInput, performSearch]);
+  }, [resetView, setFilters]);
 
   const toggleLanguage = (lang: string) => {
     const current = filters.languages || [];
@@ -222,11 +220,6 @@ export function FilterBar() {
     updateFilter({});
     setActiveDropdown(null);
   }, [updateFilter]);
-
-  const hasActiveFilters = 
-    (filters.languages && filters.languages.length > 0) ||
-    (filters.types && filters.types.length > 0) ||
-    (filters.periods && filters.periods.length > 0);
 
   // Get individual active filter pills
   const getActivePills = () => {
@@ -617,4 +610,3 @@ function DropdownItem({
     </button>
   );
 }
-

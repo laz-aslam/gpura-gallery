@@ -5,10 +5,12 @@ import type {
   DocumentSource,
   SearchRequest,
   SearchResponse,
+  SearchFilters,
   TileRequest,
   Facets,
 } from "@/lib/types";
 import { TIME_RANGES } from "@/lib/types";
+import { getCache, CACHE_TTL } from "@/lib/cache";
 import type { DataAdapter } from "./DataAdapter";
 
 // Environment configuration
@@ -20,17 +22,24 @@ const OMEKA_ITEMS_ENDPOINT = process.env.OMEKA_ITEMS_ENDPOINT || "/api/items";
  * These IDs are specific to gpura.org installation
  */
 const PROPERTY_MAP = {
+  identifier: "dcterms:identifier",
   title: "dcterms:title",
   creator: "dcterms:creator",
   date: "dcterms:date",
   issued: "dcterms:issued", // gpura uses this for dates
   language: "dcterms:language",
   type: "dcterms:type",
+  alternative: "dcterms:alternative",
   description: "dcterms:description",
   subject: "dcterms:subject",
+  medium: "dcterms:medium",
   publisher: "dcterms:publisher",
   rights: "dcterms:rights",
 } as const;
+
+const PRODUCER_PROPERTY = "bibo:producer";
+const fullItemIndexCache = getCache<ArchiveItem[]>("omeka-full-item-index");
+let fullItemIndexPromise: Promise<ArchiveItem[]> | null = null;
 
 /**
  * Language code mappings for Omeka values
@@ -63,7 +72,9 @@ const LANGUAGE_MAP: Record<string, string> = {
  */
 const TYPE_MAP: Record<string, string> = {
   book: "book",
+  books: "book",
   periodical: "periodical",
+  periodicals: "periodical",
   image: "image",
   "still image": "image",
   audio: "audio",
@@ -76,6 +87,20 @@ const TYPE_MAP: Record<string, string> = {
   newspaper: "newspaper",
 };
 
+const RESOURCE_CLASS_TYPE_MAP: Record<number, string> = {
+  26: "image",
+  30: "audio",
+  33: "image",
+  34: "video",
+  40: "book",
+  41: "book",
+  52: "book",
+  58: "image",
+  70: "map",
+  71: "book",
+  100: "image",
+};
+
 /**
  * OmekaAdapter: Fetches and transforms data from gpura.org (Omeka S)
  */
@@ -86,6 +111,258 @@ export class OmekaAdapter implements DataAdapter {
   constructor() {
     this.baseUrl = OMEKA_BASE_URL;
     this.itemsEndpoint = OMEKA_ITEMS_ENDPOINT;
+  }
+
+  private hasActiveFilters(filters?: SearchFilters): boolean {
+    if (!filters) return false;
+
+    return (
+      (filters.languages?.length ?? 0) > 0 ||
+      (filters.types?.length ?? 0) > 0 ||
+      (filters.collections?.length ?? 0) > 0 ||
+      (filters.periods?.length ?? 0) > 0 ||
+      filters.yearMin !== undefined ||
+      filters.yearMax !== undefined
+    );
+  }
+
+  private applyClientSideFilters(
+    items: ArchiveItem[],
+    filters?: SearchFilters
+  ): ArchiveItem[] {
+    if (!filters) {
+      return items;
+    }
+
+    let filteredItems = items;
+
+    if (filters.languages && filters.languages.length > 0) {
+      filteredItems = filteredItems.filter(
+        (item) => item.language && filters.languages!.includes(item.language)
+      );
+    }
+
+    if (filters.types && filters.types.length > 0) {
+      filteredItems = filteredItems.filter(
+        (item) => item.type && filters.types!.includes(item.type)
+      );
+    }
+
+    if (filters.yearMin !== undefined) {
+      filteredItems = filteredItems.filter(
+        (item) => item.year != null && item.year >= filters.yearMin!
+      );
+    }
+
+    if (filters.yearMax !== undefined) {
+      filteredItems = filteredItems.filter(
+        (item) => item.year != null && item.year <= filters.yearMax!
+      );
+    }
+
+    if (filters.periods && filters.periods.length > 0) {
+      const selectedRanges: Array<{ label: string; min?: number; max?: number }> = [];
+
+      for (const label of filters.periods) {
+          const predefined = TIME_RANGES.find((range) => range.label === label);
+          if (predefined) {
+            selectedRanges.push({
+              label: predefined.label,
+              min: predefined.min,
+              max: predefined.max,
+            });
+            continue;
+          }
+
+          const rangeMatch = label.match(/^(\d{3,4})\s*[–-]\s*(\d{3,4})$/);
+          if (rangeMatch) {
+            const min = parseInt(rangeMatch[1], 10);
+            const max = parseInt(rangeMatch[2], 10);
+            selectedRanges.push({ label, min, max });
+            continue;
+          }
+
+          const yearMatch = label.match(/^(\d{3,4})$/);
+          if (yearMatch) {
+            const year = parseInt(yearMatch[1], 10);
+            selectedRanges.push({ label, min: year, max: year });
+          }
+        }
+
+      if (selectedRanges.length > 0) {
+        filteredItems = filteredItems.filter((item) => {
+          if (item.year == null) return false;
+          const itemYear = item.year;
+
+          return selectedRanges.some((range) => {
+            const min = range.min ?? -Infinity;
+            const max = range.max ?? Infinity;
+            return itemYear >= min && itemYear <= max;
+          });
+        });
+      }
+    }
+
+    if (filters.collections && filters.collections.length > 0) {
+      filteredItems = filteredItems.filter(
+        (item) =>
+          item.collection &&
+          filters.collections!.includes(item.collection)
+      );
+    }
+
+    return filteredItems;
+  }
+
+  private async getFullItemIndex(): Promise<ArchiveItem[]> {
+    const CACHE_KEY = "all-items-v2";
+    const cached = fullItemIndexCache.get(CACHE_KEY, CACHE_TTL.DEFAULT);
+    if (cached) {
+      return cached;
+    }
+
+    if (fullItemIndexPromise) {
+      return fullItemIndexPromise;
+    }
+
+    fullItemIndexPromise = (async () => {
+      const perPage = 100;
+      const firstBatch = await this.fetchIndexPage(1, perPage);
+      const totalPages = Math.max(1, Math.ceil(firstBatch.totalResults / perPage));
+      const seenIds = new Set<string>();
+      const collected: ArchiveItem[] = [];
+
+      const collectItems = (rawItems: OmekaItem[]) => {
+        for (const item of rawItems) {
+          const transformed = this.transformItem(item);
+          if (seenIds.has(transformed.id)) {
+            continue;
+          }
+
+          seenIds.add(transformed.id);
+          collected.push(transformed);
+        }
+      };
+
+      collectItems(firstBatch.items);
+
+      const BATCH_SIZE = 2;
+      for (let startPage = 2; startPage <= totalPages; startPage += BATCH_SIZE) {
+        const pages = Array.from(
+          { length: Math.min(BATCH_SIZE, totalPages - startPage + 1) },
+          (_, index) => startPage + index
+        );
+
+        const batchResults = await Promise.all(
+          pages.map(async (pageNumber) => {
+            try {
+              return await this.fetchIndexPage(pageNumber, perPage);
+            } catch (error) {
+              console.error(`Error indexing Omeka page ${pageNumber}:`, error);
+              return { items: [] as OmekaItem[], totalResults: firstBatch.totalResults };
+            }
+          })
+        );
+
+        for (const batch of batchResults) {
+          collectItems(batch.items);
+        }
+      }
+
+      fullItemIndexCache.set(CACHE_KEY, collected);
+      fullItemIndexCache.cleanup(CACHE_TTL.DEFAULT, 4);
+
+      return collected;
+    })().finally(() => {
+      fullItemIndexPromise = null;
+    });
+
+    return fullItemIndexPromise;
+  }
+
+  private async fetchItemsWithRetry(
+    params: URLSearchParams,
+    attempts = 3
+  ): Promise<{ items: OmekaItem[]; totalResults: number }> {
+    let lastError: unknown = null;
+
+    for (let attempt = 1; attempt <= attempts; attempt += 1) {
+      try {
+        return await this.fetchItems(params);
+      } catch (error) {
+        lastError = error;
+
+        if (attempt === attempts) {
+          break;
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, attempt * 400));
+      }
+    }
+
+    throw lastError instanceof Error ? lastError : new Error("Omeka API request failed");
+  }
+
+  private async fetchIndexPage(
+    page: number,
+    perPage: number
+  ): Promise<{ items: OmekaItem[]; totalResults: number }> {
+    const params = new URLSearchParams({
+      per_page: String(perPage),
+      sort_by: "id",
+      sort_order: "asc",
+      page: String(page),
+    });
+
+    try {
+      return await this.fetchItemsWithRetry(params);
+    } catch (error) {
+      if (perPage <= 25) {
+        throw error;
+      }
+
+      const childPerPage = Math.floor(perPage / 2);
+      const pagesPerParent = Math.ceil(perPage / childPerPage);
+      const firstChildPage = (page - 1) * pagesPerParent + 1;
+      const childPages = Array.from(
+        { length: pagesPerParent },
+        (_, index) => firstChildPage + index
+      );
+      const childResults = await Promise.all(
+        childPages.map((childPage) => this.fetchIndexPage(childPage, childPerPage))
+      );
+
+      return {
+        items: childResults.flatMap((result) => result.items),
+        totalResults: childResults[0]?.totalResults ?? 0,
+      };
+    }
+  }
+
+  private async searchByFilterScan(req: SearchRequest): Promise<SearchResponse> {
+    const page = req.page || 1;
+    const pageSize = req.pageSize || 40;
+    const allItems = await this.getFullItemIndex();
+    const filteredItems = this.applyClientSideFilters(allItems, req.filters);
+    const sortedItems = [...filteredItems].sort((a, b) => {
+      const idA = Number.parseInt(a.id, 10);
+      const idB = Number.parseInt(b.id, 10);
+
+      if (Number.isFinite(idA) && Number.isFinite(idB) && idA !== idB) {
+        return idB - idA;
+      }
+
+      const yearA = a.year ?? -Infinity;
+      const yearB = b.year ?? -Infinity;
+      return yearB - yearA;
+    });
+    const offset = (page - 1) * pageSize;
+
+    return {
+      items: sortedItems.slice(offset, offset + pageSize),
+      total: sortedItems.length,
+      facets: this.computeFacets(allItems),
+    };
   }
 
   /**
@@ -169,6 +446,184 @@ export class OmekaAdapter implements DataAdapter {
     if (!type) return null;
     const lower = type.toLowerCase().trim();
     return TYPE_MAP[lower] || lower;
+  }
+
+  private detectCanonicalType(value?: string): string | null {
+    const normalized = this.normalizeType(value);
+    if (!normalized) return null;
+
+    if (TYPE_MAP[normalized]) {
+      return TYPE_MAP[normalized];
+    }
+
+    if (/\bnewspapers?\b/.test(normalized)) return "newspaper";
+    if (/\b(periodical|periodicals|journal|journals|magazine|magazines|serial|serials)\b/.test(normalized)) return "periodical";
+    if (/\b(manuscript|manuscripts)\b/.test(normalized)) return "manuscript";
+    if (/\b(image|images|photograph|photographs|photo|photos|poster|posters)\b/.test(normalized)) return "image";
+    if (/\b(audio|sound|recording|recordings|song|songs|music)\b/.test(normalized)) return "audio";
+    if (/\b(video|videos|moving image|film|films)\b/.test(normalized)) return "video";
+    if (/\b(map|maps|atlas|atlases)\b/.test(normalized)) return "map";
+    if (/\b(book|books|text ?book|text ?books|textbook|textbooks|reader|readers|primer|primers)\b/.test(normalized)) return "book";
+
+    return null;
+  }
+
+  private getResourceClassType(item: OmekaItem): string | null {
+    const resourceClass = item["o:resource_class"];
+    if (!resourceClass || typeof resourceClass !== "object") {
+      return null;
+    }
+
+    const rawId = (resourceClass as Record<string, unknown>)["o:id"];
+    const id = typeof rawId === "number" ? rawId : Number.parseInt(String(rawId ?? ""), 10);
+    if (!Number.isFinite(id)) {
+      return null;
+    }
+
+    return RESOURCE_CLASS_TYPE_MAP[id] || null;
+  }
+
+  private inferTypeFromMetadata({
+    title,
+    subjects = [],
+    identifiers = [],
+    alternatives = [],
+    producers = [],
+    mediums = [],
+  }: {
+    title?: string;
+    subjects?: string[];
+    identifiers?: string[];
+    alternatives?: string[];
+    producers?: string[];
+    mediums?: string[];
+  }): string | null {
+    const signals = [
+      title,
+      ...subjects,
+      ...identifiers,
+      ...alternatives,
+      ...producers,
+      ...mediums,
+    ]
+      .filter((value): value is string => Boolean(value))
+      .map((value) => value.toLowerCase().trim());
+
+    if (signals.length === 0) {
+      return null;
+    }
+
+    const combined = signals.join(" | ");
+    const hasSerialMarker =
+      combined.includes("ലക്കം") ||
+      combined.includes("പുസ്തകം") ||
+      combined.includes("വോള്യം") ||
+      combined.includes("വാല്യം") ||
+      /\b(issue|volume|number|no\.?|vol\.?)\b/.test(combined);
+    const hasManuscriptSignal =
+      combined.includes("കൈയെഴുത്ത്") ||
+      combined.includes("താളിയോല") ||
+      /\b(manuscript|palm leaves?|palm leaf)\b/.test(combined);
+
+    if (hasManuscriptSignal) {
+      return "manuscript";
+    }
+
+    const hasMapSignal =
+      /\b(map|atlas)\b/.test(combined) ||
+      combined.includes("district map") ||
+      combined.includes("survey map") ||
+      combined.includes("route map");
+
+    if (hasMapSignal) {
+      return "map";
+    }
+
+    const hasAudioSignal =
+      combined.includes("ഓഡിയോ") ||
+      /\b(audio|audio file|sound recording|sound track|soundtrack)\b/.test(combined);
+
+    if (hasAudioSignal) {
+      return "audio";
+    }
+
+    const hasVideoSignal =
+      /\b(video|film|motion picture|moving image)\b/.test(combined);
+
+    if (hasVideoSignal) {
+      return "video";
+    }
+
+    const hasNewspaperSignal =
+      combined.includes("പ്രതിപക്ഷപത്രം") ||
+      combined.includes("ദിനപത്ര") ||
+      combined.includes("വാർത്താപത്ര") ||
+      /\bgazette\b/.test(combined) ||
+      (/\b(news[- ]?paper|daily)\b/.test(combined) && hasSerialMarker) ||
+      ((combined.includes("പത്രം") || /\bpathram\b/.test(combined)) && hasSerialMarker);
+
+    if (hasNewspaperSignal) {
+      return "newspaper";
+    }
+
+    const hasPeriodicalSignal =
+      combined.includes("ആഴ്ചപ്പതിപ്പ്") ||
+      combined.includes("മാസിക") ||
+      combined.includes("വാരിക") ||
+      combined.includes("പത്രിക") ||
+      /\b(pathrika|periodical|periodicals|journal|magazine|monthly|montly|weekly|review|annual|souvenir|bulletin)\b/.test(combined);
+
+    if (hasPeriodicalSignal) {
+      return "periodical";
+    }
+
+    const hasImageSignal =
+      /\b(photo|photograph|poster|portrait|drawing|illustration|painting|still image)\b/.test(combined);
+
+    if (hasImageSignal) {
+      return "image";
+    }
+
+    return null;
+  }
+
+  private resolveCanonicalType(
+    typeValues: string[],
+    resourceClassType: string | null,
+    metadata: {
+      title?: string;
+      subjects?: string[];
+      identifiers?: string[];
+      alternatives?: string[];
+      producers?: string[];
+      mediums?: string[];
+    }
+  ): string | null {
+    if (resourceClassType) {
+      return resourceClassType;
+    }
+
+    for (const value of typeValues) {
+      const canonicalType = this.detectCanonicalType(value);
+      if (canonicalType) {
+        return canonicalType;
+      }
+    }
+
+    const inferredType = this.inferTypeFromMetadata(metadata);
+    if (inferredType) {
+      return inferredType;
+    }
+
+    if (typeValues.some((value) => value.toLowerCase().includes("bibo:book"))) {
+      return "book";
+    }
+
+    if (typeValues.some((value) => value.toLowerCase().includes("dctype:text"))) {
+      return "book";
+    }
+
+    return null;
   }
 
   /**
@@ -456,8 +911,28 @@ export class OmekaAdapter implements DataAdapter {
     const langValue = this.getPropertyValue(item, PROPERTY_MAP.language);
     const language = this.normalizeLanguage(langValue);
 
-    const typeValue = this.getPropertyValue(item, PROPERTY_MAP.type);
-    const type = this.normalizeType(typeValue);
+    const typeValues = [
+      ...this.getAllPropertyValues(item, PROPERTY_MAP.type),
+      ...(Array.isArray(item["@type"])
+        ? item["@type"].filter((value): value is string => typeof value === "string")
+        : typeof item["@type"] === "string"
+          ? [item["@type"]]
+          : []),
+    ];
+    const subjects = this.getAllPropertyValues(item, PROPERTY_MAP.subject);
+    const identifiers = this.getAllPropertyValues(item, PROPERTY_MAP.identifier);
+    const alternatives = this.getAllPropertyValues(item, PROPERTY_MAP.alternative);
+    const producers = this.getAllPropertyValues(item, PRODUCER_PROPERTY);
+    const mediums = this.getAllPropertyValues(item, PROPERTY_MAP.medium);
+    const resourceClassType = this.getResourceClassType(item);
+    const type = this.resolveCanonicalType(typeValues, resourceClassType, {
+      title,
+      subjects,
+      identifiers,
+      alternatives,
+      producers,
+      mediums,
+    });
 
     const authors = this.getAllPropertyValues(item, PROPERTY_MAP.creator);
 
@@ -584,40 +1059,6 @@ export class OmekaAdapter implements DataAdapter {
     params.set("sort_by", "created");
     params.set("sort_order", "desc");
 
-    // Filters
-    if (req.filters) {
-      // Language filter
-      if (req.filters.languages && req.filters.languages.length > 0) {
-        // Omeka S property filter format
-        params.set(
-          "property[0][property]",
-          PROPERTY_MAP.language
-        );
-        params.set("property[0][type]", "in");
-        params.set(
-          "property[0][text]",
-          req.filters.languages.join(",")
-        );
-      }
-
-      // Type filter
-      if (req.filters.types && req.filters.types.length > 0) {
-        params.set("property[1][property]", PROPERTY_MAP.type);
-        params.set("property[1][type]", "in");
-        params.set("property[1][text]", req.filters.types.join(","));
-      }
-
-      // Collection filter (item set)
-      if (req.filters.collections && req.filters.collections.length > 0) {
-        // Note: This requires item_set_id, which would need separate mapping
-        // For now, we'll filter client-side
-      }
-
-      // Year range filter
-      // Note: Omeka S doesn't have built-in date range filtering,
-      // so we'd need to use property filters with date comparison
-    }
-
     return params;
   }
 
@@ -690,85 +1131,22 @@ export class OmekaAdapter implements DataAdapter {
    * Search items with query and filters
    */
   async search(req: SearchRequest): Promise<SearchResponse> {
+    if (req.scanFilters && !req.q?.trim() && this.hasActiveFilters(req.filters)) {
+      return this.searchByFilterScan(req);
+    }
+
     const params = this.buildQueryParams(req);
     const { items, totalResults } = await this.fetchItems(params);
 
     const transformedItems = items.map((item) => this.transformItem(item));
 
-    // Apply client-side filters that Omeka doesn't support natively
-    let filteredItems = transformedItems;
-
-    if (req.filters) {
-      // Year range filter (legacy single range)
-      if (req.filters.yearMin !== undefined) {
-        filteredItems = filteredItems.filter(
-          (item) => item.year != null && item.year >= req.filters!.yearMin!
-        );
-      }
-      if (req.filters.yearMax !== undefined) {
-        filteredItems = filteredItems.filter(
-          (item) => item.year != null && item.year <= req.filters!.yearMax!
-        );
-      }
-
-      // Multi-select periods filter (supports predefined ranges and custom years)
-      if (req.filters.periods && req.filters.periods.length > 0) {
-        const selectedRanges = req.filters.periods
-          .map(label => {
-            // First try to find in predefined TIME_RANGES
-            const predefined = TIME_RANGES.find(r => r.label === label);
-            if (predefined) return predefined;
-            
-            // Try to parse as custom year or range (e.g., "1920" or "1920–1950")
-            const rangeMatch = label.match(/^(\d{3,4})\s*[–-]\s*(\d{3,4})$/);
-            if (rangeMatch) {
-              const min = parseInt(rangeMatch[1], 10);
-              const max = parseInt(rangeMatch[2], 10);
-              return { label, min, max };
-            }
-            
-            // Try single year
-            const yearMatch = label.match(/^(\d{3,4})$/);
-            if (yearMatch) {
-              const year = parseInt(yearMatch[1], 10);
-              return { label, min: year, max: year };
-            }
-            
-            return undefined;
-          })
-          .filter(r => r !== undefined);
-        
-        if (selectedRanges.length > 0) {
-          filteredItems = filteredItems.filter((item) => {
-            if (item.year == null) return false;
-            return selectedRanges.some(range => {
-              const min = range.min ?? -Infinity;
-              const max = range.max ?? Infinity;
-              return item.year! >= min && item.year! <= max;
-            });
-          });
-        }
-      }
-
-      // Collection filter (client-side)
-      if (req.filters.collections && req.filters.collections.length > 0) {
-        filteredItems = filteredItems.filter(
-          (item) =>
-            item.collection &&
-            req.filters!.collections!.includes(item.collection)
-        );
-      }
-    }
+    // Apply all filters client-side so search and tile browsing stay aligned.
+    let filteredItems = this.applyClientSideFilters(transformedItems, req.filters);
 
     // If client-side filtering was applied, we need to estimate the total
     // Since we can't know the true filtered total without fetching everything,
     // we return the filtered count for this page when filters reduce results significantly
-    const hasClientSideFilters = req.filters && (
-      req.filters.yearMin !== undefined ||
-      req.filters.yearMax !== undefined ||
-      (req.filters.periods && req.filters.periods.length > 0) ||
-      (req.filters.collections && req.filters.collections.length > 0)
-    );
+    const hasClientSideFilters = this.hasActiveFilters(req.filters);
     
     // Calculate estimated total based on filter ratio
     let estimatedTotal = totalResults;
@@ -855,82 +1233,7 @@ export class OmekaAdapter implements DataAdapter {
       return [];
     }
 
-    // Apply ALL filters client-side for reliability
-    if (req.filters) {
-      // Language filter
-      if (req.filters.languages && req.filters.languages.length > 0) {
-        transformedItems = transformedItems.filter(
-          (item) => item.language && req.filters!.languages!.includes(item.language)
-        );
-      }
-
-      // Type filter
-      if (req.filters.types && req.filters.types.length > 0) {
-        transformedItems = transformedItems.filter(
-          (item) => item.type && req.filters!.types!.includes(item.type)
-        );
-      }
-
-      // Year range filter (legacy single range)
-      if (req.filters.yearMin !== undefined) {
-        transformedItems = transformedItems.filter(
-          (item) => item.year != null && item.year >= req.filters!.yearMin!
-        );
-      }
-      if (req.filters.yearMax !== undefined) {
-        transformedItems = transformedItems.filter(
-          (item) => item.year != null && item.year <= req.filters!.yearMax!
-        );
-      }
-
-      // Multi-select periods filter (supports predefined ranges and custom years)
-      if (req.filters.periods && req.filters.periods.length > 0) {
-        const selectedRanges = req.filters.periods
-          .map(label => {
-            // First try to find in predefined TIME_RANGES
-            const predefined = TIME_RANGES.find(r => r.label === label);
-            if (predefined) return predefined;
-            
-            // Try to parse as custom year or range (e.g., "1920" or "1920–1950")
-            const rangeMatch = label.match(/^(\d{3,4})\s*[–-]\s*(\d{3,4})$/);
-            if (rangeMatch) {
-              const min = parseInt(rangeMatch[1], 10);
-              const max = parseInt(rangeMatch[2], 10);
-              return { label, min, max };
-            }
-            
-            // Try single year
-            const yearMatch = label.match(/^(\d{3,4})$/);
-            if (yearMatch) {
-              const year = parseInt(yearMatch[1], 10);
-              return { label, min: year, max: year };
-            }
-            
-            return undefined;
-          })
-          .filter(r => r !== undefined);
-        
-        if (selectedRanges.length > 0) {
-          transformedItems = transformedItems.filter((item) => {
-            if (item.year == null) return false;
-            return selectedRanges.some(range => {
-              const min = range.min ?? -Infinity;
-              const max = range.max ?? Infinity;
-              return item.year! >= min && item.year! <= max;
-            });
-          });
-        }
-      }
-
-      // Collection filter
-      if (req.filters.collections && req.filters.collections.length > 0) {
-        transformedItems = transformedItems.filter(
-          (item) =>
-            item.collection &&
-            req.filters!.collections!.includes(item.collection)
-        );
-      }
-    }
+    transformedItems = this.applyClientSideFilters(transformedItems, req.filters);
 
     // For items with placeholder thumbnails, try to fetch real thumbnails from media
     const itemsNeedingThumbnails: { index: number; rawItem: OmekaItem }[] = [];
@@ -1058,4 +1361,3 @@ interface OmekaMediaRef {
   "@id"?: string;
   "o:id"?: number;
 }
-

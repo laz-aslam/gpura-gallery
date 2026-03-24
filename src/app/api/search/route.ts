@@ -12,6 +12,7 @@ export async function GET(request: NextRequest) {
     const q = searchParams.get("q") || "";
     const page = parseInt(searchParams.get("page") || "1", 10);
     const pageSize = parseInt(searchParams.get("pageSize") || "50", 10);
+    const scanFilters = searchParams.get("scan") === "1";
 
     // Parse filters if provided
     let filters: SearchFilters | undefined;
@@ -38,7 +39,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Create cache key
-    const cacheKey = `${q}:${page}:${pageSize}:${filtersParam || ""}`;
+    const cacheKey = `${q}:${page}:${pageSize}:${filtersParam || ""}:scan=${scanFilters ? "1" : "0"}`;
 
     // Check cache
     const cached = searchCache.get(cacheKey, CACHE_TTL.DEFAULT);
@@ -58,6 +59,7 @@ export async function GET(request: NextRequest) {
       filters,
       page,
       pageSize,
+      scanFilters,
     });
 
     // Store in cache
